@@ -1,0 +1,147 @@
+{
+  "company_name": "FinbotsAI (Finbots.AI)",
+  "tagline": "AI Credit Scoring to boost lending profits and reduce NPLs",
+  "industry": "AI-powered credit risk technology / FinTech SaaS",
+  "industry_slug": "fintech",
+  "target_audience": "Banks, digital banks, SME lenders, agri-lenders, retail lenders, credit bureaus, and financial institutions of all sizes seeking to improve credit risk decisioning",
+  "icp": "Mid-to-large banks and lending institutions in Asia, MENA, Africa, and Australia looking to replace legacy credit scoring systems with AI-powered scorecards to increase loan approvals, reduce non-performing loans, and cut operating costs",
+  "tone": "authoritative, precise, innovative, accessible",
+  "products": [
+    {
+      "name": "CreditX",
+      "description": "A no-code AI credit risk modeling SaaS platform that enables lenders to build, validate, and deploy high-accuracy credit scorecards from data to deployment in as little as one day.",
+      "key_features": [
+        "360 Data Link: connects to internal, external, and alternate data sources with intelligent data treatment (missing value imputation, bias reduction)",
+        "Quantum Model Builder: develops Application, Behaviour, and Collection scorecards for consumer and SME loans",
+        "Parameter Control Panel: over 20 customizable parameters for fine-tuning models",
+        "AI Toggle: choose between rules-based/logistic regression models and advanced ensemble Machine Learning, or a blend of both",
+        "Single-click API-based deployment with real-time decisioning and performance monitoring"
+      ],
+      "use_cases": [
+        "Building and deploying application, behaviour, and collection credit scorecards",
+        "Real-time credit decisioning for retail and SME lending",
+        "Credit risk model development for financial inclusion in underserved markets"
+      ],
+      "metrics": [
+        "Build scorecards in 1 day (vs. 9\u201312 months for other solutions)",
+        "Decision time under 0.03 seconds",
+        "20%+ increase in loan approval rates",
+        "15%+ decrease in loss rates",
+        "50%+ reduction in operating costs",
+        "Used by lenders in 11 countries across Middle East, Africa, APAC, and Australia"
+      ]
+    }
+  ],
+  "value_propositions": [
+    "Highest accuracy AI credit scoring in the market, enabling more approvals with less risk",
+    "Build and deploy custom credit scorecards in a single day with no-code tooling",
+    "Blends traditional and AI modeling \u2014 lenders choose rules-based, logistic regression, or ensemble ML",
+    "Affordable and scalable platform designed for big banks, startups, and all lenders in between",
+    "Fair, transparent, and explainable AI with regulatory validation and ISO & SOC2 certification"
+  ],
+  "key_metrics": [
+    "20%+ increase in loan approval rates",
+    "15%+ decrease in loss rates",
+    "Less than 0.03 seconds per credit decision",
+    "50%+ reduction in operating costs",
+    "Scorecards built in 1 day (competitors take 9\u201312 months)",
+    "100+ auto-derived variables in feature engineering",
+    "Used by lenders in 11 countries across Asia and MENA",
+    "USD 3 million raised in Series A from Accel (April 2022)"
+  ],
+  "customer_quotes": [
+    "Utilizing AI technology for credit scoring aligns perfectly with our mission to provide ethical and inclusive financial services to our customers, empowering us to make more accurate lending decisions. \u2013 Julian Kyula, Founder, EDOMx",
+    "finbots.ai's solution creditX is a transformative solution that will help us strengthen our credit risk management and enhance our operational efficiency and agility. \u2013 Fung Kai Jin, CEO, Sathapana Bank",
+    "finbots.ai provides a robust AI-powered solution that can be easily deployed and it further enables us to reach an audience segment and improve profitability of our lending business. \u2013 Soronzonbold Lkhagvasuren, CEO, M Bank",
+    "finbots.ai's solution, creditX, is a game-changer in credit modelling that supports our Bank's digital transformation journey. \u2013 Ti Eng Hui, CEO, Baiduri Bank",
+    "by using AI-enabled models, we have made our application and underwriting process much more efficient\u2026with a faster turnaround time, while driving down the cost of risk. \u2013 Torsten Buening, former Chief Risk Officer, Deem Finance",
+    "The partnership with finbotsAI aligns perfectly with our vision of leveraging technology to serve our customers better and contribute to the growth of the Indian Agri. \u2013 Anil Kumar, Founder & CEO, Samunnati",
+    "We are excited to choose Fintech Galaxy as our Open Banking partner in the MENA region to drive financial inclusion and democratize AI credit scoring capabilities. By integrating CreditX into FINX Connect, we aim to empower lenders to reduce risk and improve profitability by making better credit risk decisions, ultimately reaching more customers across the region. \u2013 Sanjay Uppal, Founder & CEO, FinbotsAI",
+    "CreditX's integration into FINX Connect brings a breath of fresh air into MENA region, providing something unseen so far that will make everybody's lives much easier. \u2013 Mirna Sleiman, Founder & CEO, Fintech Galaxy"
+  ],
+  "notable_clients": [
+    "PwC",
+    "Baiduri Bank",
+    "Sathapana Bank",
+    "Oracle",
+    "AWS",
+    "EDOMx",
+    "Samunnati",
+    "IMDA",
+    "TCS",
+    "Singapore Fintech Association (SFA)",
+    "IDC",
+    "M Bank",
+    "Deem Finance",
+    "TANAKU",
+    "NEC",
+    "TradeDepot",
+    "KBZ Bank",
+    "Shapoorji Pallonji Group",
+    "Fintech Galaxy",
+    "IBM",
+    "Finvent",
+    "Argenic"
+  ],
+  "case_study_results": [
+    "Lenders across 11 countries in Asia and MENA saw 20% increase in approval rates using CreditX",
+    "15% reduction in loss rates for lenders using CreditX",
+    "Large productivity boost in risk model development for lenders using CreditX platform",
+    "Deem Finance: made application and underwriting process more efficient with faster turnaround time while driving down cost of risk"
+  ],
+  "differentiators": [
+    "Builds credit scorecards in 1 day versus 9\u201312 months for competing solutions",
+    "No-code platform usable by any team member, not just data scientists",
+    "AI Toggle lets lenders choose traditional logistic regression, advanced ML, or a blend \u2014 no forced AI adoption",
+    "Completed AI Verify \u2014 the world's first AI governance toolkit \u2014 with regulatory validation",
+    "ISO & SOC2 certified with flexible hosting (on-prem, public or private cloud)",
+    "Customer owns the model IP",
+    "Covers full credit lifecycle: Application, Behaviour, and Collection scorecards in one platform",
+    "Advanced explainability at both model and decision level",
+    "Recognized as Top 10 FinTech in Singapore by the Monetary Authority of Singapore (MAS)"
+  ],
+  "key_messages": [
+    "AI credit scoring that boosts lending profits and reduces non-performing loans (NPLs)",
+    "Go from data to live credit models in as little as 1 day (or 10 days end-to-end)",
+    "Democratizing access to cutting-edge AI credit capabilities for all financial institutions \u2014 from big banks to startups",
+    "Fair, transparent, and explainable AI validated by regulators",
+    "Driving financial inclusion by enabling lenders to reach creditworthy but underserved borrowers",
+    "Simple, scalable, seamless \u2014 one unified platform for modeling, workflow, deployment, and monitoring",
+    "Affordable pricing for lenders of all sizes"
+  ],
+  "words_they_use": [
+    "AI Credit Scoring",
+    "creditX",
+    "scorecard",
+    "NPLs (non-performing loans)",
+    "financial inclusion",
+    "no-code",
+    "real-time decisioning",
+    "explainability",
+    "AI Toggle",
+    "data-to-deployment",
+    "Quantum Model Builder",
+    "360 Data Link",
+    "Parameter Control Panel",
+    "bias reduction",
+    "ensemble Machine Learning",
+    "democratize",
+    "transformative",
+    "game-changer",
+    "ethical and inclusive",
+    "profitable lending",
+    "credit lifecycle",
+    "alternate data",
+    "propensity modelling",
+    "decision engine"
+  ],
+  "awards_certifications": [
+    "ISO certified",
+    "SOC2 certified",
+    "Completed AI Verify \u2014 world's first AI governance toolkit",
+    "Recognized as Top 10 FinTech in Singapore by the Monetary Authority of Singapore (MAS)",
+    "Accel Portfolio company (Series A investment from Accel Fund VII, April 2022)",
+    "Regulatory validation with leading regulators",
+    "MAS certification logo displayed on site"
+  ]
+}
