@@ -4,7 +4,7 @@ from dotenv import load_dotenv
 import base64
 import json
 from extract_brand import brand_to_prompt
-from strat_agent import generate_brief, brief_to_post_content
+from strat_agent import generate_brief, brief_to_post_content, brief_to_caption
 
 
 load_dotenv()
@@ -38,23 +38,24 @@ with open("brand_finbotsai.json") as f:
 # Brand prompt
 brand = brand_to_prompt(profile)
 
+topic = "CreditX deployment speed"
+# topic = "why lenders still take 9-12 months to build credit scorecards"
+product_name = "CreditX"
 
-post_content = f"""
-Embed this exact logo in the HTML as a base64 data URI:
-<img src="data:image/png;base64,{logo_b64}" alt="finbots.ai" style="max-height:36px" />
+with open("brain_finbots.json") as f:
+    brain = json.load(f)
 
-POST TYPE: Stat callout
-EXACT COPY — do not change any wording:
-- Stat hero: "1 Day"
-- Contrast line: "vs 9–12 months industry average"
-- Headline: "Build and deploy credit scorecards in a day"
-- Subtext: "finbots.ai CreditX automates the entire scorecard pipeline — from raw data to deployed model"
-- Supporting metrics (show all three):
-  · >20% increase in loan approvals
-  · >15% decrease in loss rates
-  · <0.03 sec decision time
-- CTA: "Book a demo → finbots.ai"
-"""
+brief = generate_brief(topic, brain, product_name=product_name)
+caption = brief_to_caption(brief)
+post_content = brief_to_post_content(brief, logo_b64)
+
+with open("caption.txt", "w") as f:
+    f.write(caption)
+
+print("--- LINKEDIN CAPTION ---")
+print(caption)
+print("\n--- GRAPHIC CONTENT ---")
+print(post_content)
 
 
 ## LLM Call

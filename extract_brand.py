@@ -158,10 +158,7 @@ def build_brand(url: str, logo_path: str = None) -> dict:
     return brand
 
 
-# ─────────────────────────────────────────────
-# STEP 4: Format brand for graphic generation
-# ─────────────────────────────────────────────
-
+#Convert brand JSON into brand guidelines prompt
 def brand_to_prompt(brand: dict) -> str:
     """Convert brand JSON into brand guidelines string for Layer 4."""
 
@@ -173,33 +170,30 @@ def brand_to_prompt(brand: dict) -> str:
     audience_str = ", ".join(bp.get("target_audience", [])) or "business professionals"
 
     return f"""
-BRAND GUIDELINES — follow exactly:
-- Company: {brand.get('company_name', '')}
-- Website: {brand.get('website', '')}
-- Industry: {bp.get('industry', '')}
-- Tone: {tone_str}
-- Target audience: {audience_str}
+            BRAND GUIDELINES — follow exactly:
+            - Company: {brand.get('company_name', '')}
+            - Website: {brand.get('website', '')}
+            - Industry: {bp.get('industry', '')}
+            - Tone: {tone_str}
+            - Target audience: {audience_str}
 
-COLORS — use these exact hex values:
-- Primary: {vi.get('primary_color', '#000000')}
-- Secondary: {vi.get('secondary_color', '#333333')}
-- Accent: {vi.get('accent_color', '#0066FF')}
-- Background: {vi.get('background_color', '#FFFFFF')}
-- Text primary: {vi.get('text_primary_color', '#000000')}
+            COLORS — use these exact hex values:
+            - Primary: {vi.get('primary_color', '#000000')}
+            - Secondary: {vi.get('secondary_color', '#333333')}
+            - Accent: {vi.get('accent_color', '#0066FF')}
+            - Background: {vi.get('background_color', '#FFFFFF')}
+            - Text primary: {vi.get('text_primary_color', '#000000')}
 
-FONTS:
-- Display font: {fonts.get('display') or 'choose a distinctive Google Font'}
-- Body font: {fonts.get('body') or 'choose a clean readable Google Font'}
-- Google Fonts URL: {fonts.get('google_fonts_url') or 'choose appropriate Google Fonts'}
+            FONTS:
+            - Display font: {fonts.get('display') or 'choose a distinctive Google Font'}
+            - Body font: {fonts.get('body') or 'choose a clean readable Google Font'}
+            - Google Fonts URL: {fonts.get('google_fonts_url') or 'choose appropriate Google Fonts'}
 
-LOGO: embedded in the image above — place top left, max height 36px, embed as base64 data URI
-"""
+            LOGO: embedded in the image above — place top left, max height 36px, embed as base64 data URI
+            """
 
 
-# ─────────────────────────────────────────────
 # RUN
-# ─────────────────────────────────────────────
-
 if __name__ == "__main__":
     import sys
 

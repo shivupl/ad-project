@@ -23,14 +23,37 @@ From the company knowledge, find the single most compelling fact, contrast, or c
 - Outcome-focused (what the customer gains, not what the product does)
 - Audience-aware (enterprise lenders care about risk and compliance; startups care about speed and cost)
 
-**Step 3 — Write the copy**
-LinkedIn B2B copy rules:
-- Headline: bold, specific, outcome-focused — under 10 words
-- Stat hero: the single most impressive number related to the topic
-- Contrast line: what makes the stat meaningful ("vs X industry average")
-- Subtext: one sentence expanding on the headline — include product name + what it does
-- Metrics: 2–3 supporting proof points directly relevant to the topic — use exact numbers from company knowledge
-- CTA: action-oriented, always includes the company website
+**Step 3 — Write two separate artifacts**
+
+You are producing **two different things** with different word budgets:
+
+**Caption** — the LinkedIn post text people read in the feed. This can be fuller: hook, context, proof, CTA. Write for someone scrolling on mobile.
+
+**Graphic** — the text that appears ON the image. This must be scannable in 2 seconds. Fewer words, bigger impact. Never paste the caption onto the graphic.
+
+## Caption rules (LinkedIn post text)
+
+- Hook: one line that works standalone before "see more"
+- Body: 2–4 short paragraphs or a tight bullet list — expand the angle, add context and proof
+- CTA: one clear action with website
+- Can use full sentences and more detail than the graphic
+- Specific numbers outperform vague claims — use exact figures from company knowledge
+- Never use filler: "excited to announce", "we're proud to share", "in today's world"
+- Use the brand's vocabulary where possible
+
+## Graphic rules (image copy — keep it minimal)
+
+The graphic is NOT a summary of the caption. It is a visual hook.
+
+Hard limits:
+- Headline: max 8 words
+- Subtext: max 12 words — one short phrase, or null if the stat/headline carries it
+- Stat hero: the single number or phrase that dominates the layout, or null
+- Contrast line: max 8 words, or null
+- Metrics: max 2 items, each max 6 words — short punchy fragments, not full sentences
+- CTA: max 5 words (e.g. "Book a demo → finbots.ai")
+
+Graphic copy must pass the squint test: someone should grasp the message without reading every word.
 
 ## Post type formats
 
@@ -79,12 +102,18 @@ Lead with the benefit, not the feature.
 ## Copy quality bar
 
 Before finalizing, check:
-- Is the headline specific enough to be credible?
-- Does the stat hero make the reader stop scrolling?
-- Does the contrast line make the stat feel surprising?
-- Is the subtext one clean sentence — no run-ons?
-- Are the metrics the 2–3 most relevant to this specific topic?
-- Does the CTA have a clear action word?
+
+**Caption**
+- Does the hook work alone before "see more"?
+- Does the body add context the graphic doesn't need to repeat?
+- Is the CTA one clear action?
+
+**Graphic**
+- Can someone get the message in 2 seconds?
+- Is the headline under 8 words?
+- Is subtext absent or under 12 words?
+- Are metrics short fragments, not sentences?
+- Is there LESS text than you want to write? (If yes, good.)
 
 If any answer is no — rewrite until yes.
 
@@ -95,11 +124,18 @@ Return ONLY a valid JSON object — no explanation, no markdown, no backticks:
 {
   "post_type": "stat_callout | thought_leadership | social_proof | product_announcement",
   "angle": "one sentence explaining the strategic angle chosen and why",
-  "stat_hero": "the main stat exactly as it appears in company knowledge, or null",
-  "contrast_line": "context that makes the stat meaningful, or null",
-  "headline": "exact headline copy — under 10 words",
-  "subtext": "exact subtext copy — one sentence, includes product name",
-  "metrics": ["exact metric 1", "exact metric 2", "exact metric 3"],
-  "cta": "exact CTA copy including website",
-  "design_notes": "one sentence on visual direction — layout, dominant element, mood"
+  "caption": {
+    "hook": "first line — standalone scroll-stopper",
+    "body": "2-4 short paragraphs or bullets with context and proof",
+    "cta": "action-oriented CTA with website"
+  },
+  "graphic": {
+    "headline": "max 8 words — the visual anchor",
+    "stat_hero": "dominant number or phrase, or null",
+    "contrast_line": "max 8 words giving context, or null",
+    "subtext": "max 12 words, or null",
+    "metrics": ["short fragment 1", "short fragment 2"],
+    "cta": "max 5 words",
+    "design_notes": "one sentence on visual direction — layout, dominant element, mood"
+  }
 }
