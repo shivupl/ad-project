@@ -4,6 +4,7 @@ import os
 import re
 from dotenv import load_dotenv
 from firecrawl import FirecrawlApp
+from paths import DATA_DIR
 
 load_dotenv()
 
@@ -140,7 +141,7 @@ def build_brain(url: str, max_pages: int = 20) -> dict:
         return {}
 
     company_slug = brain.get("company_name", "company").lower().replace(" ", "_").replace(".", "").replace("/", "")
-    output_path  = f"brain_{company_slug}.json"
+    output_path  = DATA_DIR / f"brain_{company_slug}.json"
 
     with open(output_path, "w") as f:
         json.dump(brain, f, indent=2)

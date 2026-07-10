@@ -3,19 +3,15 @@ import json
 import os
 import re
 from dotenv import load_dotenv
+
 from extract_brain import brain_to_context
+from paths import LINKEDIN_STRATEGY_SKILL
 
 load_dotenv()
 client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
 
+STRATEGY_SYSTEM_PROMPT = LINKEDIN_STRATEGY_SKILL.read_text()
 
-# SYSTEM PROMPT (linkedin strategy skill) — loaded from skill file
-STRATEGY_SYSTEM_PROMPT = open("linkedin_strategy_skill.md").read()
-
-
-# ─────────────────────────────────────────────
-# GENERATE POST BRIEF
-# ─────────────────────────────────────────────
 
 def generate_brief(topic: str, brain: dict, product_name: str = None) -> dict:
     """
@@ -40,7 +36,7 @@ Remember: caption and graphic are separate artifacts with separate word budgets.
         model="claude-sonnet-4-6",
         max_tokens=1500,
         system=STRATEGY_SYSTEM_PROMPT,
-        messages=[{"role": "user", "content": user_message}]
+        messages=[{"role": "user", "content": user_message}],
     )
 
     raw = response.content[0].text.strip()
@@ -56,35 +52,24 @@ Remember: caption and graphic are separate artifacts with separate word budgets.
         return {}
 
 
-# ─────────────────────────────────────────────
-# FORMAT: caption → plain text ready to post on LinkedIn
-# ─────────────────────────────────────────────
-
 def brief_to_caption(brief: dict) -> str:
     """Converts the caption section into plain text ready to paste into LinkedIn."""
     caption = brief.get("caption", {})
 
     hook = caption.get("hook", "")
     body = caption.get("body", "")
-    cta  = caption.get("cta", "")
+    cta = caption.get("cta", "")
 
     return f"{hook}\n\n{body}\n\n{cta}"
 
 
-# ─────────────────────────────────────────────
-# FORMAT: graphic → post_content string for app.py
-# ─────────────────────────────────────────────
-
 def brief_to_post_content(brief: dict, logo_b64: str) -> str:
-    """
-    Converts the graphic section into the post_content string
-    that gets passed directly into app.py for graphic generation.
-    """
+    """Converts the graphic section into the prompt string for graphic generation."""
     graphic = brief.get("graphic", {})
 
     metrics_str = "\n".join([f"  · {m}" for m in graphic.get("metrics", [])])
 
-    stat_line     = f'- Stat hero: "{graphic["stat_hero"]}"' if graphic.get("stat_hero") else ""
+    stat_line = f'- Stat hero: "{graphic["stat_hero"]}"' if graphic.get("stat_hero") else ""
     contrast_line = f'- Contrast line: "{graphic["contrast_line"]}"' if graphic.get("contrast_line") else ""
 
     return f"""Embed this exact logo in the HTML as a base64 data URI:
@@ -104,18 +89,14 @@ EXACT COPY — do not change any wording:
 """
 
 
-# ─────────────────────────────────────────────
-# RUN
-# ─────────────────────────────────────────────
-
 if __name__ == "__main__":
     import sys
     import base64
 
-    brain_file   = sys.argv[1] if len(sys.argv) > 1 else input("Brain JSON path: ").strip()
-    topic        = sys.argv[2] if len(sys.argv) > 2 else input("What do you want to post about? ").strip()
+    brain_file = sys.argv[1] if len(sys.argv) > 1 else input("Brain JSON path: ").strip()
+    topic = sys.argv[2] if len(sys.argv) > 2 else input("What do you want to post about? ").strip()
     product_name = sys.argv[3] if len(sys.argv) > 3 else None
-    logo_path    = sys.argv[4] if len(sys.argv) > 4 else input("Logo path: ").strip()
+    logo_path = sys.argv[4] if len(sys.argv) > 4 else input("Logo path: ").strip()
 
     with open(brain_file) as f:
         brain = json.load(f)
@@ -133,5 +114,5 @@ if __name__ == "__main__":
         print("\n--- LINKEDIN CAPTION (post text) ---")
         print(brief_to_caption(brief))
 
-        print("\n--- GRAPHIC CONTENT (for app.py) ---")
+        print("\n--- GRAPHIC CONTENT ---")
         print(brief_to_post_content(brief, logo_b64))

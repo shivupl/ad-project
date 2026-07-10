@@ -5,6 +5,7 @@ import os
 import re
 from urllib.parse import urljoin
 from dotenv import load_dotenv
+from paths import DATA_DIR
 
 load_dotenv()
 client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
@@ -147,7 +148,7 @@ def build_brand(url: str, logo_path: str = None) -> dict:
         brand["visual_identity"]["logo_path"] = logo_path or None
 
     company_slug = brand.get("company_name", "company").lower().replace(" ", "_").replace(".", "").replace("/", "")
-    output_path  = f"brand_{company_slug}.json"
+    output_path  = DATA_DIR / f"brand_{company_slug}.json"
 
     with open(output_path, "w") as f:
         json.dump(brand, f, indent=2)
