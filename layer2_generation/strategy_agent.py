@@ -23,7 +23,7 @@ def generate_brief(topic: str, brain: dict, product_name: str = None) -> dict:
     with separate 'caption' (LinkedIn post text) and 'graphic' (image content) sections.
     """
 
-    brain_context = brain_to_context(brain, product_name=product_name)
+    brain_context = brain_to_context(brain, product_name=product_name, topic=topic)
 
     user_message = f"""
 COMPANY KNOWLEDGE:

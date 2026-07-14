@@ -74,6 +74,29 @@ def filter_candidate_pages(links: list[dict]) -> list[dict]:
     return filtered
 
 
+def _claude_json_list(prompt: str, model: str = "claude-haiku-4-5-20251001", max_tokens: int = 1000):
+    """One cheap Claude call expecting a JSON array response. Returns the list,
+    or None on any API/parse failure — the caller decides the fallback."""
+    try:
+        response = client.messages.create(
+            model=model,
+            max_tokens=max_tokens,
+            messages=[{"role": "user", "content": prompt}],
+        )
+
+        raw = response.content[0].text.strip()
+        raw = re.sub(r'^```json\s*', '', raw)
+        raw = re.sub(r'^```\s*', '', raw)
+        raw = re.sub(r'\s*```$', '', raw)
+
+        result = json.loads(raw)
+        return result if isinstance(result, list) and result else None
+
+    except Exception as e:
+        print(f"Claude JSON-list call failed: {e}")
+        return None
+
+
 def rank_relevant_pages(candidates: list[dict], url: str, max_pages: int) -> list[str]:
     """One cheap Claude call ranks candidate pages by title/description and
     returns the URLs most useful for a marketing knowledge base. Falls back
@@ -105,26 +128,8 @@ Return ONLY a JSON array of up to {max_pages} URLs, most relevant first, no expl
 ["url1", "url2", ...]
 """
 
-    try:
-        response = client.messages.create(
-            model="claude-haiku-4-5-20251001",
-            max_tokens=1000,
-            messages=[{"role": "user", "content": prompt}],
-        )
-
-        raw = response.content[0].text.strip()
-        raw = re.sub(r'^```json\s*', '', raw)
-        raw = re.sub(r'^```\s*', '', raw)
-        raw = re.sub(r'\s*```$', '', raw)
-
-        selected = json.loads(raw)
-        if isinstance(selected, list) and selected:
-            return selected[:max_pages]
-        return fallback
-
-    except Exception as e:
-        print(f"Ranking error, falling back to heuristic order: {e}")
-        return fallback
+    selected = _claude_json_list(prompt)
+    return selected[:max_pages] if selected else fallback
 
 
 def fetch_pages(urls: list[str], url: str) -> dict:
@@ -219,15 +224,15 @@ Return ONLY a valid JSON object, no explanation, no markdown, no backticks:
   "products": [
     {{
       "name": "product name",
-      "description": "what it does in one sentence",
-      "key_features": ["up to 5 features"],
-      "use_cases": ["up to 3 use cases"],
+      "description": "1-3 sentences capturing what it does, direct from source content",
+      "key_features": ["up to 8 features"],
+      "use_cases": ["up to 5 use cases"],
       "metrics": ["specific stats for this product only"]
     }}
   ],
 
-  "value_propositions": ["up to 5 company-wide value props"],
-  "key_metrics": ["up to 8 specific stats with numbers"],
+  "value_propositions": ["up to 8 company-wide value props"],
+  "key_metrics": ["up to 15 specific stats with numbers"],
   "customer_quotes": ["verbatim quotes with full attribution"],
   "notable_clients": ["company names"],
   "case_study_results": ["specific outcomes with numbers"],
@@ -242,15 +247,22 @@ Rules:
 - Customer quotes must be verbatim with speaker name and title
 - Metrics must include exact numbers and context
 - Only extract what is explicitly stated — never invent or infer
+- For customer_quotes, notable_clients, case_study_results, differentiators, and
+  key_messages: extract ALL clearly stated items found in the content, not just a
+  sample — this is a knowledge base for many future posts, not a single summary,
+  so completeness matters more than brevity here
 - Empty fields use null or []
 """
 
     for attempt in range(2):
         response = client.messages.create(
             model="claude-sonnet-4-6",
-            max_tokens=4000,
+            max_tokens=8000,
             messages=[{"role": "user", "content": prompt}]
         )
+
+        if response.stop_reason == "max_tokens":
+            print("Warning: extraction response hit max_tokens — output may be truncated/invalid JSON")
 
         raw = response.content[0].text.strip()
         raw = re.sub(r'^```json\s*', '', raw)
@@ -298,8 +310,55 @@ def build_brain(url: str, max_pages: int = 20) -> dict:
 # STEP 4: Format brain context for strategy agent
 # ─────────────────────────────────────────────
 
-def brain_to_context(brain: dict, product_name: str = None) -> str:
-    """Convert brain JSON into context string for Layer 2 strategy agent."""
+def select_by_relevance(items: list[str], topic: str, purpose: str, max_items: int) -> list[str]:
+    """If items already fits within max_items, return as-is (no API call needed).
+    Otherwise, if topic is given, one cheap Claude call picks the max_items most
+    relevant to topic. Falls back to items[:max_items] if topic is None, the
+    pool is empty, or the call fails."""
+    if len(items) <= max_items:
+        return items
+
+    fallback = items[:max_items]
+    if not topic:
+        return fallback
+
+    listing = "\n".join(f"{i}. {item}" for i, item in enumerate(items, 1))
+    prompt = f"""
+A marketing post is being written about this topic: "{topic}"
+
+Below is a numbered pool of {purpose} available for this company. Select the {max_items} MOST
+relevant to the topic above — the ones that would make the strongest, most specific
+supporting evidence for a post on this exact topic.
+
+POOL:
+{listing}
+
+Return ONLY a JSON array of up to {max_items} item NUMBERS (integers) from the list above,
+most relevant first, no explanation. Return numbers only, never the item text itself
+(some items contain quote marks that break JSON if copied directly):
+[3, 7, 1]
+"""
+
+    selected_numbers = _claude_json_list(prompt)
+    if not selected_numbers:
+        return fallback
+
+    result = []
+    for n in selected_numbers:
+        try:
+            idx = int(n)
+        except (TypeError, ValueError):
+            continue
+        if 1 <= idx <= len(items):
+            result.append(items[idx - 1])
+
+    return result[:max_items] if result else fallback
+
+
+def brain_to_context(brain: dict, product_name: str = None, topic: str = None) -> str:
+    """Convert brain JSON into context string for Layer 2 strategy agent.
+    When topic is given, quotes/metrics/case studies are selected for relevance
+    to that specific post rather than always showing the same first few."""
 
     nl = "\n"
     metrics = brain.get("key_metrics", [])
@@ -319,6 +378,10 @@ PRODUCT FOCUS: {p['name']}
 """
                 break
 
+    metrics = select_by_relevance(metrics, topic, "company/product metrics and stats", max_items=10)
+    quotes = select_by_relevance(brain.get("customer_quotes", []), topic, "customer quotes", max_items=4)
+    case_studies = select_by_relevance(brain.get("case_study_results", []), topic, "case study results", max_items=4)
+
     return f"""
 COMPANY KNOWLEDGE:
 - Company: {brain.get('company_name', '')}
@@ -335,12 +398,15 @@ VALUE PROPOSITIONS:
 {nl.join([f"  - {v}" for v in brain.get("value_propositions", [])]) or "  - None"}
 
 CUSTOMER QUOTES (use verbatim):
-{nl.join([f"  - {q}" for q in brain.get("customer_quotes", [])[:3]]) or "  - None"}
+{nl.join([f"  - {q}" for q in quotes]) or "  - None"}
+
+CASE STUDY RESULTS:
+{nl.join([f"  - {c}" for c in case_studies]) or "  - None"}
 
 DIFFERENTIATORS:
 {nl.join([f"  - {d}" for d in brain.get("differentiators", [])]) or "  - None"}
 
-NOTABLE CLIENTS: {", ".join(brain.get("notable_clients", [])[:10]) or "None"}
+NOTABLE CLIENTS: {", ".join(brain.get("notable_clients", [])[:15]) or "None"}
 
 KEY MESSAGES:
 {nl.join([f"  - {m}" for m in brain.get("key_messages", [])]) or "  - None"}
