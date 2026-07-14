@@ -1,3 +1,7 @@
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
 import base64
 import json
 import os
@@ -5,9 +9,9 @@ import os
 import anthropic
 from dotenv import load_dotenv
 
-from extract_brand import brand_to_prompt
-from paths import DATA_DIR, FRONTEND_DESIGN_SKILL
-from strategy_agent import brief_to_caption, brief_to_post_content, generate_brief
+from layer1_extraction.extract_brand import brand_to_prompt
+from paths import DATA_DIR, FRONTEND_DESIGN_SKILL, ROOT
+from layer2_generation.strategy_agent import brief_to_caption, brief_to_post_content, generate_brief
 
 load_dotenv()
 client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
@@ -122,7 +126,7 @@ if __name__ == "__main__":
         topic=topic,
         brand_path=str(DATA_DIR / "brand_finbotsai.json"),
         brain_path=str(DATA_DIR / "brain_finbotsai.json"),
-        logo_path=str(os.path.join(os.path.dirname(__file__), "logo.png")),
+        logo_path=str(ROOT / "logo.png"),
         product_name=product_name,
     )
 

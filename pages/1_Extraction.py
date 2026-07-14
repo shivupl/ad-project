@@ -1,7 +1,7 @@
 import streamlit as st
 
-from extract_brain import brain_to_context, build_brain
-from extract_brand import brand_to_prompt, build_brand
+from layer1_extraction.extract_brain import brain_to_context, build_brain
+from layer1_extraction.extract_brand import brand_to_prompt, build_brand
 from paths import DATA_DIR, ROOT
 
 st.set_page_config(page_title="Extraction", layout="wide")

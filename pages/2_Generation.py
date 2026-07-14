@@ -1,6 +1,6 @@
 import streamlit as st
 
-from graphic_generator import run
+from layer2_generation.graphic_generator import run
 from paths import DATA_DIR, ROOT
 
 st.set_page_config(page_title="Generation", layout="wide")
