@@ -9,7 +9,7 @@ st.title("Layer 1 — Extraction")
 st.caption("URL → brand JSON (visual identity) + brain JSON (company knowledge)")
 
 url = st.text_input("Website URL", placeholder="https://www.finbots.ai/")
-max_pages = st.slider("Max pages to crawl (brain only)", min_value=5, max_value=50, value=20, step=5)
+max_pages = st.slider("Pages to analyze (most relevant, not a raw crawl limit)", min_value=5, max_value=30, value=12, step=1)
 
 logo_file = st.file_uploader("Logo (optional — used for brand JSON)", type=["png", "jpg", "jpeg", "webp"])
 
@@ -68,7 +68,7 @@ if extract_brain:
     if not url.strip():
         st.error("Enter a website URL.")
     else:
-        with st.spinner(f"Crawling site (up to {max_pages} pages) and extracting knowledge... This may take a few minutes."):
+        with st.spinner(f"Discovering and ranking pages, then extracting knowledge from the top {max_pages}... This may take a few minutes."):
             try:
                 brain = build_brain(url.strip(), max_pages=max_pages)
             except Exception as e:

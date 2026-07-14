@@ -17,17 +17,124 @@ firecrawl = FirecrawlApp(api_key=os.getenv("FIRECRAWL_API_KEY"))
 
 
 # ─────────────────────────────────────────────
-# STEP 1: Crawl full website via Firecrawl
+# STEP 1: Discover → filter → rank → fetch only the relevant pages
 # ─────────────────────────────────────────────
 
-def crawl_website(url: str, max_pages: int = 20) -> dict:
-    """Crawl full site and return clean markdown per page."""
-    print(f"Crawling {url} (up to {max_pages} pages)...")
+_JUNK_PATH_SEGMENTS = (
+    "/login", "/signup", "/sign-up", "/sign-in", "/cart", "/checkout",
+    "/account", "/privacy", "/terms", "/cookie", "/legal",
+)
+_ASSET_EXTENSIONS = (
+    ".pdf", ".jpg", ".jpeg", ".png", ".gif", ".svg", ".zip", ".css", ".js",
+    ".xml", ".ico", ".woff", ".woff2",
+)
+
+
+def discover_pages(url: str, limit: int = 100) -> list[dict]:
+    """Cheap URL discovery via firecrawl.map() — no content fetch.
+    Returns [{'url', 'title', 'description'}, ...]; [] on error."""
+    print(f"Discovering pages on {url}...")
 
     try:
-        result = firecrawl.crawl(
-            url,
-            limit=max_pages,
+        result = firecrawl.map(url, limit=limit)
+        links = [
+            {"url": link.url, "title": link.title or "", "description": link.description or ""}
+            for link in (result.links or [])
+        ]
+        print(f"Discovered {len(links)} candidate pages")
+        return links
+
+    except Exception as e:
+        print(f"Discovery error: {e}")
+        return []
+
+
+def filter_candidate_pages(links: list[dict]) -> list[dict]:
+    """Pure heuristic, no network/LLM: drop obviously irrelevant pages
+    (auth/account/legal, pagination, non-HTML assets) and exact duplicates."""
+    seen = set()
+    filtered = []
+
+    for link in links:
+        page_url = link.get("url") or ""
+        if not page_url or page_url in seen:
+            continue
+        lower = page_url.lower()
+
+        if any(seg in lower for seg in _JUNK_PATH_SEGMENTS):
+            continue
+        if any(lower.endswith(ext) for ext in _ASSET_EXTENSIONS):
+            continue
+        if "?page=" in lower or re.search(r"/page/\d+", lower):
+            continue
+
+        seen.add(page_url)
+        filtered.append(link)
+
+    return filtered
+
+
+def rank_relevant_pages(candidates: list[dict], url: str, max_pages: int) -> list[str]:
+    """One cheap Claude call ranks candidate pages by title/description and
+    returns the URLs most useful for a marketing knowledge base. Falls back
+    to heuristic order (candidates[:max_pages]) on any API/parse failure —
+    never hard-fails the pipeline over a ranking hiccup."""
+    fallback = [c["url"] for c in candidates[:max_pages]]
+    if not candidates:
+        return fallback
+
+    listing = "\n".join(
+        f"- {c['url']} | title: {c['title']} | description: {c['description']}"
+        for c in candidates
+    )
+
+    prompt = f"""
+Website: {url}
+
+Below is a list of candidate pages discovered on this site (url | title | description).
+Select the {max_pages} pages MOST useful for building a marketing knowledge base —
+prioritize: product/feature pages, pricing, about/company, case studies, customer
+stories/testimonials, and any page with concrete metrics or differentiators.
+Deprioritize: generic blog listing pages, careers, contact, individual old blog posts
+unless clearly a cornerstone/flagship piece.
+
+CANDIDATE PAGES:
+{listing}
+
+Return ONLY a JSON array of up to {max_pages} URLs, most relevant first, no explanation:
+["url1", "url2", ...]
+"""
+
+    try:
+        response = client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=1000,
+            messages=[{"role": "user", "content": prompt}],
+        )
+
+        raw = response.content[0].text.strip()
+        raw = re.sub(r'^```json\s*', '', raw)
+        raw = re.sub(r'^```\s*', '', raw)
+        raw = re.sub(r'\s*```$', '', raw)
+
+        selected = json.loads(raw)
+        if isinstance(selected, list) and selected:
+            return selected[:max_pages]
+        return fallback
+
+    except Exception as e:
+        print(f"Ranking error, falling back to heuristic order: {e}")
+        return fallback
+
+
+def fetch_pages(urls: list[str], url: str) -> dict:
+    """Fetch full content for pre-selected URLs via firecrawl.batch_scrape().
+    Falls back to a single homepage scrape() if batch_scrape fails."""
+    print(f"Fetching {len(urls)} selected pages...")
+
+    try:
+        result = firecrawl.batch_scrape(
+            urls,
             formats=["markdown"],
             exclude_tags=["nav", "footer", "header", "script", "style"],
         )
@@ -41,12 +148,38 @@ def crawl_website(url: str, max_pages: int = 20) -> dict:
                 "content": (page.markdown or "")[:8000],
             })
 
-        print(f"Crawled {len(pages)} pages")
+        print(f"Fetched {len(pages)} pages")
         return {"pages": pages, "url": url}
 
     except Exception as e:
-        print(f"Crawl error: {e}")
-        return {"pages": [], "url": url}
+        print(f"Batch fetch error, falling back to homepage only: {e}")
+        try:
+            page = firecrawl.scrape(url, formats=["markdown"])
+            meta = page.metadata_dict
+            return {
+                "pages": [{
+                    "url":     meta.get("source_url") or meta.get("url") or url,
+                    "title":   meta.get("title") or "",
+                    "content": (page.markdown or "")[:8000],
+                }],
+                "url": url,
+            }
+        except Exception as e2:
+            print(f"Homepage fallback also failed: {e2}")
+            return {"pages": [], "url": url}
+
+
+def crawl_website(url: str, max_pages: int = 20) -> dict:
+    """Pipeline: discover candidate pages cheaply → filter obvious junk →
+    rank the rest for relevance → fetch full content only for the top pages.
+    Same signature/return shape as before, so build_brain() needs no changes."""
+    links = discover_pages(url)
+    if not links:
+        return fetch_pages([url], url)
+
+    candidates = filter_candidate_pages(links) or links
+    selected = rank_relevant_pages(candidates, url, max_pages)
+    return fetch_pages(selected, url)
 
 
 # ─────────────────────────────────────────────
@@ -61,13 +194,16 @@ def extract_brain(crawled: dict) -> dict:
     for page in crawled["pages"]:
         all_content += f"\n\n--- PAGE: {page['url']} ---\n{page['content']}"
 
+    # Content is already relevance-curated by crawl_website() upstream, so this is
+    # a backstop cap (not the primary control): 20 pages x 8000-char cap = 160000
+    # worst case, 60000 covers a generous handful of full curated pages.
     prompt = f"""
 You are a marketing knowledge analyst. Extract structured company knowledge for use by a marketing AI agent.
 
 Website: {crawled['url']}
 
 FULL SITE CONTENT:
-{all_content[:30000]}
+{all_content[:60000]}
 
 Return ONLY a valid JSON object, no explanation, no markdown, no backticks:
 
@@ -109,23 +245,25 @@ Rules:
 - Empty fields use null or []
 """
 
-    response = client.messages.create(
-        model="claude-sonnet-4-6",
-        max_tokens=4000,
-        messages=[{"role": "user", "content": prompt}]
-    )
+    for attempt in range(2):
+        response = client.messages.create(
+            model="claude-sonnet-4-6",
+            max_tokens=4000,
+            messages=[{"role": "user", "content": prompt}]
+        )
 
-    raw = response.content[0].text.strip()
-    raw = re.sub(r'^```json\s*', '', raw)
-    raw = re.sub(r'^```\s*', '', raw)
-    raw = re.sub(r'\s*```$', '', raw)
+        raw = response.content[0].text.strip()
+        raw = re.sub(r'^```json\s*', '', raw)
+        raw = re.sub(r'^```\s*', '', raw)
+        raw = re.sub(r'\s*```$', '', raw)
 
-    try:
-        return json.loads(raw)
-    except json.JSONDecodeError as e:
-        print(f"JSON parse error: {e}")
-        print(f"Raw: {raw[:300]}")
-        return {}
+        try:
+            return json.loads(raw)
+        except json.JSONDecodeError as e:
+            print(f"JSON parse error (attempt {attempt + 1}): {e}")
+            print(f"Raw: {raw[:300]}")
+
+    return {}
 
 
 # ─────────────────────────────────────────────
