@@ -58,6 +58,17 @@ if extract_brand:
                 with col:
                     st.color_picker(label, value=color, disabled=True)
 
+            mp = brand.get("marketing_profile") or {}
+            if mp:
+                st.subheader("Marketing profile")
+                m1, m2, m3, m4 = st.columns(4)
+                m1.metric("Business model", mp.get("business_model") or "—")
+                m2.metric("Persuasion", mp.get("persuasion_mode") or "—")
+                m3.metric("Density", mp.get("content_density") or "—")
+                m4.metric("CTA style", mp.get("cta_style") or "—")
+                if mp.get("reasoning"):
+                    st.caption(f"Why: {mp['reasoning']}")
+
             tab_json, tab_prompt = st.tabs(["Brand JSON", "Brand prompt preview"])
             with tab_json:
                 st.json(brand)

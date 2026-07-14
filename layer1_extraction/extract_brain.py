@@ -227,12 +227,16 @@ Return ONLY a valid JSON object, no explanation, no markdown, no backticks:
       "description": "1-3 sentences capturing what it does, direct from source content",
       "key_features": ["up to 8 features"],
       "use_cases": ["up to 5 use cases"],
-      "metrics": ["specific stats for this product only"]
+      "metrics": ["specific stats for this product only"],
+      "audience_type": "b2b | consumer | prosumer | null"
     }}
   ],
 
   "value_propositions": ["up to 8 company-wide value props"],
   "key_metrics": ["up to 15 specific stats with numbers"],
+  "offers_pricing": ["price points, free trials, guarantees, discounts, membership terms"],
+  "customer_pain_points": ["problems and feelings the brand explicitly addresses"],
+  "brand_promises": ["transformation or outcome statements the brand makes"],
   "customer_quotes": ["verbatim quotes with full attribution"],
   "notable_clients": ["company names"],
   "case_study_results": ["specific outcomes with numbers"],
@@ -244,8 +248,18 @@ Return ONLY a valid JSON object, no explanation, no markdown, no backticks:
 
 Rules:
 - Products must be separated — never mix metrics from different products
+- audience_type per product: who the product is framed for — "b2b" (companies,
+  teams, enterprise buyers), "consumer" (individuals buying for themselves),
+  "prosumer" (individual professionals/creators), or null if unclear
 - Customer quotes must be verbatim with speaker name and title
 - Metrics must include exact numbers and context
+- Pricing belongs in offers_pricing, NOT in key_metrics — key_metrics is for
+  performance/outcome stats, offers_pricing is for what things cost and deal terms
+- customer_pain_points: only problems/feelings the content explicitly names or
+  clearly addresses (e.g. "no waiting rooms" implies the waiting-room pain) —
+  never invent psychology
+- brand_promises: outcome statements made directly to the customer ("Lose up to
+  25% body weight", "Results in 3-6 months", "100% online")
 - Only extract what is explicitly stated — never invent or infer
 - For customer_quotes, notable_clients, case_study_results, differentiators, and
   key_messages: extract ALL clearly stated items found in the content, not just a
@@ -368,9 +382,10 @@ def brain_to_context(brain: dict, product_name: str = None, topic: str = None) -
         for p in brain["products"]:
             if p["name"].lower() == product_name.lower():
                 metrics = p.get("metrics", metrics)
+                audience_line = f"\n- Audience type: {p['audience_type']}" if p.get("audience_type") else ""
                 product_section = f"""
 PRODUCT FOCUS: {p['name']}
-- Description: {p.get('description', '')}
+- Description: {p.get('description', '')}{audience_line}
 - Key features:
 {nl.join([f"  · {f}" for f in p.get('key_features', [])])}
 - Use cases:
@@ -381,6 +396,29 @@ PRODUCT FOCUS: {p['name']}
     metrics = select_by_relevance(metrics, topic, "company/product metrics and stats", max_items=10)
     quotes = select_by_relevance(brain.get("customer_quotes", []), topic, "customer quotes", max_items=4)
     case_studies = select_by_relevance(brain.get("case_study_results", []), topic, "case study results", max_items=4)
+
+    # Consumer-shaped sections: only included when the brain actually has them,
+    # so legacy B2B brains don't get noise sections full of "None".
+    offers = select_by_relevance(brain.get("offers_pricing") or [], topic, "offers, pricing and promotions", max_items=6)
+    pain_points = select_by_relevance(brain.get("customer_pain_points") or [], topic, "customer pain points and emotional drivers", max_items=5)
+    promises = select_by_relevance(brain.get("brand_promises") or [], topic, "transformation and outcome promises", max_items=5)
+
+    consumer_sections = ""
+    if offers:
+        consumer_sections += f"""
+OFFERS & PRICING:
+{nl.join([f"  - {o}" for o in offers])}
+"""
+    if pain_points:
+        consumer_sections += f"""
+CUSTOMER PAIN POINTS (what the brand solves for people):
+{nl.join([f"  - {p}" for p in pain_points])}
+"""
+    if promises:
+        consumer_sections += f"""
+BRAND PROMISES (outcomes stated to the customer):
+{nl.join([f"  - {b}" for b in promises])}
+"""
 
     return f"""
 COMPANY KNOWLEDGE:
@@ -396,7 +434,7 @@ KEY METRICS:
 
 VALUE PROPOSITIONS:
 {nl.join([f"  - {v}" for v in brain.get("value_propositions", [])]) or "  - None"}
-
+{consumer_sections}
 CUSTOMER QUOTES (use verbatim):
 {nl.join([f"  - {q}" for q in quotes]) or "  - None"}
 

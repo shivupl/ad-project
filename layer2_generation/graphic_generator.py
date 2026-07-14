@@ -91,7 +91,7 @@ def run(
     logo_b64 = load_logo_b64(logo_path)
     brand_prompt = brand_to_prompt(profile)
 
-    brief = generate_brief(topic, brain, product_name=product_name)
+    brief = generate_brief(topic, brain, brand=profile, product_name=product_name)
     if not brief:
         raise RuntimeError("Strategy agent failed — no brief generated")
 

@@ -13,6 +13,7 @@ Before writing a single line of HTML, commit to a clear visual strategy:
 - **Tone**: Match the brand's personality precisely. A fintech brand is not a lifestyle brand. A developer tool is not a consumer app. Read the brand brief carefully and commit to a direction that fits.
 - **Composition**: Where does the eye enter? Where does it travel? Where does it rest? Every element placement must be intentional.
 - **Differentiation**: What makes this graphic impossible to mistake for something else? The answer must exist before you start coding.
+- **Creative direction**: If the brief includes a CREATIVE DIRECTION block, it overrides your instincts — especially on copy density and whether data panels/dashboard styling are appropriate. An emotional consumer brand must never receive an enterprise-dashboard treatment, no matter how good the stats look.
 
 **CRITICAL**: Bold minimalism and rich maximalism both work. Generic middle-ground does not. Commit fully to one direction and execute it with precision.
 
@@ -96,6 +97,20 @@ Different post types have different visual logic. Match the layout to the intent
 - Headline can be shorter and more conceptual
 - More background treatment / visual interest
 - Tagline or URL as the only CTA
+
+**Emotional / transformation**
+- One large human statement is the hero — typography carries the feeling
+- Minimal supporting text; whitespace does the work
+- Soft, warm treatment — NO data panels, NO grid backgrounds, NO stat tiles
+- At most one number on the canvas, only if it makes the outcome concrete
+- CTA is a gentle invitation, not a sales push
+
+**Offer / price**
+- The price or offer is the visual anchor — treat it like a stat hero, but it's a deal, not proof
+- One benefit line justifies it
+- One friction-remover as subtext ("100% online. Cancel anytime.")
+- Strong consumer CTA ("Shop now")
+- Clean and confident — deal energy without clutter
 
 ## Background & Atmosphere Rules
 
