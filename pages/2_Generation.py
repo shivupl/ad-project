@@ -68,8 +68,16 @@ if generate:
         st.caption(f"Saved to `{result['caption_path']}`")
 
     with tab_graphic:
-        st.components.v1.html(result["html"], height=680, scrolling=True)
-        st.caption(f"Saved to `{result['html_path']}`")
+        if result.get("png_path"):
+            st.image(result["png_path"])
+            with open(result["png_path"], "rb") as f:
+                st.download_button("Download PNG (ready to post)", f, file_name="graphic.png", mime="image/png")
+            st.caption(f"PNG: `{result['png_path']}` · HTML: `{result['html_path']}`")
+            with st.expander("HTML preview"):
+                st.components.v1.html(result["html"], height=660, scrolling=True)
+        else:
+            st.components.v1.html(result["html"], height=680, scrolling=True)
+            st.caption(f"Saved to `{result['html_path']}` (PNG render unavailable)")
 
     with tab_brief:
         st.json(result["brief"])

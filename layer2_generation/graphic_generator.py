@@ -13,6 +13,7 @@ from dotenv import load_dotenv
 
 from layer1_extraction.extract_brand import brand_to_prompt
 from paths import DATA_DIR, FRONTEND_DESIGN_SKILL, ROOT
+from layer2_generation.render_graphic import html_to_png, review_graphic_png
 from layer2_generation.strategy_agent import brief_to_caption, brief_to_post_content, generate_brief, validate_brief
 
 load_dotenv()
@@ -21,7 +22,8 @@ client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
 LOGO_PLACEHOLDER = "__LOGO_BASE64__"
 CANVAS_WIDTH = 1200
 CANVAS_HEIGHT = 627
-MAX_GENERATION_ATTEMPTS = 2
+# 3 attempts: room for one text-side correction and one visual-side correction
+MAX_GENERATION_ATTEMPTS = 3
 # Allowance on top of the brief's own copy for small labels (company name, url,
 # chip captions) — anything past this means the model invented paragraphs.
 EXTRA_WORDS_ALLOWANCE = 25
@@ -159,23 +161,39 @@ def validate_graphic(html: str, brief: dict) -> list[str]:
     return issues
 
 
-def generate_graphic(brand_prompt: str, post_content: str, logo_b64: str, brief: dict) -> tuple:
-    """Generate the graphic HTML, validating hard constraints and retrying once
-    with corrective feedback. Returns (final_html, warnings)."""
+def generate_graphic(brand_prompt: str, post_content: str, logo_b64: str, brief: dict, png_path: str = None) -> tuple:
+    """Generate the graphic HTML with two validation stages, retrying with
+    corrective feedback on failure:
+      1. text checks (exact copy, canvas size, word budget, truncation)
+      2. visual QA — render to PNG headlessly, then a vision call inspects the
+         actual pixels for overlap/clipping/illegibility (the failure class no
+         text check can see)
+    Returns (final_html_with_logo, warnings)."""
     correction = None
-    html, issues = "", []
+    html_final, issues = "", []
 
     for attempt in range(1, MAX_GENERATION_ATTEMPTS + 1):
         html = generate_graphic_html(brand_prompt, post_content, logo_b64, correction=correction)
         issues = validate_graphic(html, brief)
+        html_final = html.replace(LOGO_PLACEHOLDER, logo_b64)
+
+        if not issues and png_path:
+            if html_to_png(html_final, png_path):
+                defects = review_graphic_png(png_path)
+                issues = [f"The rendered image shows: {d}" for d in defects]
+
         if not issues:
             break
         if attempt < MAX_GENERATION_ATTEMPTS:
             print(f"Graphic validation failed (attempt {attempt}), retrying with corrections: {issues}")
             correction = "\n".join(f"- {i}" for i in issues)
 
-    html = html.replace(LOGO_PLACEHOLDER, logo_b64)
-    return html, issues
+    # If the last attempt failed at the text stage, the PNG on disk is stale —
+    # re-render so the saved PNG always matches the saved HTML.
+    if issues and png_path:
+        html_to_png(html_final, png_path)
+
+    return html_final, issues
 
 
 def run(
@@ -187,11 +205,13 @@ def run(
     caption_path: str = None,
     html_path: str = None,
     brief_path: str = None,
+    png_path: str = None,
 ) -> dict:
-    """Full pipeline: topic → strategy brief → caption + HTML graphic."""
+    """Full pipeline: topic → strategy brief → caption + HTML graphic + PNG."""
     caption_path = caption_path or str(DATA_DIR / "caption.txt")
     html_path = html_path or str(DATA_DIR / "output.html")
     brief_path = brief_path or str(DATA_DIR / "brief.json")
+    png_path = png_path or str(DATA_DIR / "output.png")
 
     with open(brand_path) as f:
         profile = json.load(f)
@@ -213,7 +233,7 @@ def run(
     with open(caption_path, "w") as f:
         f.write(caption)
 
-    html, warnings = generate_graphic(brand_prompt, post_content, logo_b64, brief)
+    html, warnings = generate_graphic(brand_prompt, post_content, logo_b64, brief, png_path=png_path)
     warnings = validate_brief(brief) + warnings
     with open(html_path, "w") as f:
         f.write(html)
@@ -227,6 +247,7 @@ def run(
         "caption_path": caption_path,
         "html_path": html_path,
         "brief_path": brief_path,
+        "png_path": png_path if os.path.exists(png_path) else None,
     }
 
 
