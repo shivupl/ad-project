@@ -119,8 +119,9 @@ Return ONLY the merged JSON object, no explanation, no markdown, no backticks.
 
     try:
         response = client.messages.create(
-            model="claude-sonnet-4-6",
+            model="claude-sonnet-5",
             max_tokens=8000,
+            thinking={"type": "disabled"},
             messages=[{"role": "user", "content": prompt}],
         )
 

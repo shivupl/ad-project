@@ -255,12 +255,14 @@ Rules:
 
 
 def run_brain_extraction(content) -> dict:
-    """One claude-sonnet-4-6 extraction call with retry-once-on-parse-failure.
+    """One claude-sonnet-5 extraction call with retry-once-on-parse-failure.
     content: a plain string, or a list of content blocks (for document input)."""
     for attempt in range(2):
         response = client.messages.create(
-            model="claude-sonnet-4-6",
+            model="claude-sonnet-5",
             max_tokens=8000,
+            # structured JSON extraction — thinking off keeps output inside max_tokens
+            thinking={"type": "disabled"},
             messages=[{"role": "user", "content": content}]
         )
 

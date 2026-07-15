@@ -5,6 +5,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import base64
 import json
 import os
+import re
 
 import anthropic
 from dotenv import load_dotenv
@@ -41,8 +42,9 @@ CRITICAL OUTPUT RULES:
 """
 
     response = client.messages.create(
-        model="claude-sonnet-4-6",
+        model="claude-sonnet-5",
         max_tokens=8000,
+        thinking={"type": "disabled"},
         system=system_prompt,
         messages=[
             {
@@ -65,7 +67,10 @@ CRITICAL OUTPUT RULES:
         ],
     )
 
-    return response.content[0].text
+    html = response.content[0].text.strip()
+    html = re.sub(r'^```(?:html)?\s*', '', html)
+    html = re.sub(r'\s*```$', '', html)
+    return html
 
 
 def run(
