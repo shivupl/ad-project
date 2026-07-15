@@ -13,7 +13,7 @@ from dotenv import load_dotenv
 
 from layer1_extraction.extract_brand import brand_to_prompt
 from paths import DATA_DIR, FRONTEND_DESIGN_SKILL, ROOT
-from layer2_generation.render_graphic import html_to_png, review_graphic_png
+from layer2_generation.render_graphic import html_to_png, repair_graphic_html, review_graphic_png
 from layer2_generation.strategy_agent import brief_to_caption, brief_to_post_content, generate_brief, validate_brief
 
 load_dotenv()
@@ -162,37 +162,45 @@ def validate_graphic(html: str, brief: dict) -> list[str]:
 
 
 def generate_graphic(brand_prompt: str, post_content: str, logo_b64: str, brief: dict, png_path: str = None) -> tuple:
-    """Generate the graphic HTML with two validation stages, retrying with
-    corrective feedback on failure:
-      1. text checks (exact copy, canvas size, word budget, truncation)
-      2. visual QA — render to PNG headlessly, then a vision call inspects the
-         actual pixels for overlap/clipping/illegibility (the failure class no
-         text check can see)
+    """Generate the graphic HTML with two validation stages:
+      1. text checks (exact copy, canvas size, word budget, truncation) —
+         failures REGENERATE with corrective feedback (the output is broken)
+      2. visual QA — render to PNG, a vision call inspects the pixels for
+         overlap/clipping/illegibility; defects are REPAIRED surgically:
+         the model sees its own HTML plus the screenshot and fixes only the
+         defects, preserving the design it already made
     Returns (final_html_with_logo, warnings)."""
-    correction = None
-    html_final, issues = "", []
+    html = generate_graphic_html(brand_prompt, post_content, logo_b64)
+    issues = []
 
     for attempt in range(1, MAX_GENERATION_ATTEMPTS + 1):
-        html = generate_graphic_html(brand_prompt, post_content, logo_b64, correction=correction)
         issues = validate_graphic(html, brief)
+        if issues:
+            if attempt == MAX_GENERATION_ATTEMPTS:
+                break
+            print(f"Text validation failed (attempt {attempt}), regenerating with corrections: {issues}")
+            html = generate_graphic_html(brand_prompt, post_content, logo_b64,
+                                         correction="\n".join(f"- {i}" for i in issues))
+            continue
+
         html_final = html.replace(LOGO_PLACEHOLDER, logo_b64)
+        if not png_path or not html_to_png(html_final, png_path):
+            return html_final, []
 
-        if not issues and png_path:
-            if html_to_png(html_final, png_path):
-                defects = review_graphic_png(png_path)
-                issues = [f"The rendered image shows: {d}" for d in defects]
+        defects = review_graphic_png(png_path)
+        if not defects:
+            return html_final, []
 
-        if not issues:
+        issues = [f"The rendered image shows: {d}" for d in defects]
+        if attempt == MAX_GENERATION_ATTEMPTS:
             break
-        if attempt < MAX_GENERATION_ATTEMPTS:
-            print(f"Graphic validation failed (attempt {attempt}), retrying with corrections: {issues}")
-            correction = "\n".join(f"- {i}" for i in issues)
+        print(f"Visual QA found defects (attempt {attempt}), repairing in place: {defects}")
+        html = repair_graphic_html(html, png_path, defects)
 
-    # If the last attempt failed at the text stage, the PNG on disk is stale —
-    # re-render so the saved PNG always matches the saved HTML.
-    if issues and png_path:
+    # Out of attempts — save best effort, PNG re-rendered to match the HTML.
+    html_final = html.replace(LOGO_PLACEHOLDER, logo_b64)
+    if png_path:
         html_to_png(html_final, png_path)
-
     return html_final, issues
 
 

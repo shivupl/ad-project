@@ -106,6 +106,50 @@ Return ONLY JSON, no explanation:
         return []
 
 
+# ─────────────────────────────────────────────
+# STEP 3: Surgical repair — fix defects, keep the design
+# ─────────────────────────────────────────────
+
+def repair_graphic_html(html: str, png_path: str, defects: list) -> str:
+    """Show the model its own HTML alongside the rendered screenshot and the
+    defect list; it fixes ONLY the defects (font sizes, spacing, positions)
+    while preserving the design and copy. Returns the corrected HTML — or the
+    original unchanged if the call fails."""
+    try:
+        png_b64 = base64.standard_b64encode(Path(png_path).read_bytes()).decode()
+        defects_str = "\n".join(f"- {d}" for d in defects)
+
+        response = client.messages.create(
+            model="claude-sonnet-5",
+            max_tokens=16000,
+            thinking={"type": "disabled"},
+            messages=[{
+                "role": "user",
+                "content": [
+                    {"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": png_b64}},
+                    {"type": "text", "text": f"""The screenshot above is the rendered result of the HTML below. It has these rendering defects:
+{defects_str}
+
+Fix ONLY these defects with minimal changes — adjust font sizes, line heights, spacing, or element positions as needed. Do NOT redesign, do NOT change any copy, do NOT alter colors or fonts, and keep the logo <img> tag (with its src placeholder) exactly as it is.
+
+Return ONLY the complete corrected HTML file, no markdown, no backticks, no explanation.
+
+HTML:
+{html}"""},
+                ],
+            }],
+        )
+
+        fixed = response.content[0].text.strip()
+        fixed = re.sub(r'^```(?:html)?\s*', '', fixed)
+        fixed = re.sub(r'\s*```$', '', fixed)
+        return fixed if fixed.lstrip().lower().startswith(("<!doctype", "<html")) else html
+
+    except Exception as e:
+        print(f"Repair call failed, keeping original HTML: {e}")
+        return html
+
+
 if __name__ == "__main__":
     html_file = sys.argv[1] if len(sys.argv) > 1 else input("HTML file: ").strip()
     png_file = sys.argv[2] if len(sys.argv) > 2 else str(Path(html_file).with_suffix(".png"))
