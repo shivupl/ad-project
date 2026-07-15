@@ -2,19 +2,12 @@ import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-import anthropic
 import json
-import os
 import re
 from datetime import date
-from dotenv import load_dotenv
-from firecrawl import FirecrawlApp
+
+import llm
 from paths import DATA_DIR
-
-load_dotenv()
-
-client   = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
-firecrawl = FirecrawlApp(api_key=os.getenv("FIRECRAWL_API_KEY"))
 
 
 # ─────────────────────────────────────────────
@@ -31,13 +24,13 @@ _ASSET_EXTENSIONS = (
 )
 
 
-def discover_pages(url: str, limit: int = 100) -> list[dict]:
+def discover_pages(url: str, limit: int = 100) -> list:
     """Cheap URL discovery via firecrawl.map() — no content fetch.
     Returns [{'url', 'title', 'description'}, ...]; [] on error."""
     print(f"Discovering pages on {url}...")
 
     try:
-        result = firecrawl.map(url, limit=limit)
+        result = llm.firecrawl.map(url, limit=limit)
         links = [
             {"url": link.url, "title": link.title or "", "description": link.description or ""}
             for link in (result.links or [])
@@ -50,7 +43,7 @@ def discover_pages(url: str, limit: int = 100) -> list[dict]:
         return []
 
 
-def filter_candidate_pages(links: list[dict]) -> list[dict]:
+def filter_candidate_pages(links: list) -> list:
     """Pure heuristic, no network/LLM: drop obviously irrelevant pages
     (auth/account/legal, pagination, non-HTML assets) and exact duplicates."""
     seen = set()
@@ -75,34 +68,10 @@ def filter_candidate_pages(links: list[dict]) -> list[dict]:
     return filtered
 
 
-def _claude_json_list(prompt: str, model: str = "claude-haiku-4-5-20251001", max_tokens: int = 1000):
-    """One cheap Claude call expecting a JSON array response. Returns the list,
-    or None on any API/parse failure — the caller decides the fallback."""
-    try:
-        response = client.messages.create(
-            model=model,
-            max_tokens=max_tokens,
-            messages=[{"role": "user", "content": prompt}],
-        )
-
-        raw = response.content[0].text.strip()
-        raw = re.sub(r'^```json\s*', '', raw)
-        raw = re.sub(r'^```\s*', '', raw)
-        raw = re.sub(r'\s*```$', '', raw)
-
-        result = json.loads(raw)
-        return result if isinstance(result, list) and result else None
-
-    except Exception as e:
-        print(f"Claude JSON-list call failed: {e}")
-        return None
-
-
-def rank_relevant_pages(candidates: list[dict], url: str, max_pages: int) -> list[str]:
-    """One cheap Claude call ranks candidate pages by title/description and
+def rank_relevant_pages(candidates: list, url: str, max_pages: int) -> list:
+    """One cheap model call ranks candidate pages by title/description and
     returns the URLs most useful for a marketing knowledge base. Falls back
-    to heuristic order (candidates[:max_pages]) on any API/parse failure —
-    never hard-fails the pipeline over a ranking hiccup."""
+    to heuristic order (candidates[:max_pages]) on any failure."""
     fallback = [c["url"] for c in candidates[:max_pages]]
     if not candidates:
         return fallback
@@ -129,17 +98,19 @@ Return ONLY a JSON array of up to {max_pages} URLs, most relevant first, no expl
 ["url1", "url2", ...]
 """
 
-    selected = _claude_json_list(prompt)
-    return selected[:max_pages] if selected else fallback
+    selected = llm.complete_json(prompt, model=llm.MODEL_LIGHT, max_tokens=1000, retries=1)
+    if isinstance(selected, list) and selected:
+        return selected[:max_pages]
+    return fallback
 
 
-def fetch_pages(urls: list[str], url: str) -> dict:
+def fetch_pages(urls: list, url: str) -> dict:
     """Fetch full content for pre-selected URLs via firecrawl.batch_scrape().
     Falls back to a single homepage scrape() if batch_scrape fails."""
     print(f"Fetching {len(urls)} selected pages...")
 
     try:
-        result = firecrawl.batch_scrape(
+        result = llm.firecrawl.batch_scrape(
             urls,
             formats=["markdown"],
             exclude_tags=["nav", "footer", "header", "script", "style"],
@@ -160,7 +131,7 @@ def fetch_pages(urls: list[str], url: str) -> dict:
     except Exception as e:
         print(f"Batch fetch error, falling back to homepage only: {e}")
         try:
-            page = firecrawl.scrape(url, formats=["markdown"])
+            page = llm.firecrawl.scrape(url, formats=["markdown"])
             meta = page.metadata_dict
             return {
                 "pages": [{
@@ -177,8 +148,7 @@ def fetch_pages(urls: list[str], url: str) -> dict:
 
 def crawl_website(url: str, max_pages: int = 20) -> dict:
     """Pipeline: discover candidate pages cheaply → filter obvious junk →
-    rank the rest for relevance → fetch full content only for the top pages.
-    Same signature/return shape as before, so build_brain() needs no changes."""
+    rank the rest for relevance → fetch full content only for the top pages."""
     links = discover_pages(url)
     if not links:
         return fetch_pages([url], url)
@@ -255,32 +225,9 @@ Rules:
 
 
 def run_brain_extraction(content) -> dict:
-    """One claude-sonnet-5 extraction call with retry-once-on-parse-failure.
-    content: a plain string, or a list of content blocks (for document input)."""
-    for attempt in range(2):
-        response = client.messages.create(
-            model="claude-sonnet-5",
-            max_tokens=8000,
-            # structured JSON extraction — thinking off keeps output inside max_tokens
-            thinking={"type": "disabled"},
-            messages=[{"role": "user", "content": content}]
-        )
-
-        if response.stop_reason == "max_tokens":
-            print("Warning: extraction response hit max_tokens — output may be truncated/invalid JSON")
-
-        raw = response.content[0].text.strip()
-        raw = re.sub(r'^```json\s*', '', raw)
-        raw = re.sub(r'^```\s*', '', raw)
-        raw = re.sub(r'\s*```$', '', raw)
-
-        try:
-            return json.loads(raw)
-        except json.JSONDecodeError as e:
-            print(f"JSON parse error (attempt {attempt + 1}): {e}")
-            print(f"Raw: {raw[:300]}")
-
-    return {}
+    """One extraction call against the brain schema. `content` is a plain
+    string, or a list of content blocks (for document input)."""
+    return llm.complete_json(content, max_tokens=8000) or {}
 
 
 def extract_brain(crawled: dict) -> dict:
@@ -292,8 +239,7 @@ def extract_brain(crawled: dict) -> dict:
         all_content += f"\n\n--- PAGE: {page['url']} ---\n{page['content']}"
 
     # Content is already relevance-curated by crawl_website() upstream, so this is
-    # a backstop cap (not the primary control): 20 pages x 8000-char cap = 160000
-    # worst case, 60000 covers a generous handful of full curated pages.
+    # a backstop cap (not the primary control).
     prompt = f"""
 You are a marketing knowledge analyst. Extract structured company knowledge for use by a marketing AI agent.
 
@@ -311,10 +257,7 @@ FULL SITE CONTENT:
 # ─────────────────────────────────────────────
 
 def build_brain(url: str, max_pages: int = 20) -> dict:
-    """
-    Pipeline: URL → crawl full site → extract knowledge → save brain JSON.
-    """
-
+    """Pipeline: URL → crawl site → extract knowledge → save brain JSON."""
     crawled = crawl_website(url, max_pages)
     brain   = extract_brain(crawled)
 
@@ -331,64 +274,80 @@ def build_brain(url: str, max_pages: int = 20) -> dict:
         json.dump(brain, f, indent=2)
 
     print(f"\nBrain saved → {output_path}")
-    print(json.dumps(brain, indent=2))
-
     return brain
 
 
 # ─────────────────────────────────────────────
-# STEP 4: Format brain context for strategy agent
+# STEP 4: Format brain context for the strategy agent
 # ─────────────────────────────────────────────
 
-def select_by_relevance(items: list[str], topic: str, purpose: str, max_items: int) -> list[str]:
-    """If items already fits within max_items, return as-is (no API call needed).
-    Otherwise, if topic is given, one cheap Claude call picks the max_items most
-    relevant to topic. Falls back to items[:max_items] if topic is None, the
-    pool is empty, or the call fails."""
-    if len(items) <= max_items:
-        return items
+# Per-pool caps for the strategy context: (brain field, cap)
+_CONTEXT_POOLS = [
+    ("key_metrics", 10),
+    ("customer_quotes", 4),
+    ("case_study_results", 4),
+    ("offers_pricing", 6),
+    ("customer_pain_points", 5),
+    ("brand_promises", 5),
+]
 
-    fallback = items[:max_items]
-    if not topic:
+
+def _select_relevant(pools: dict, topic: str) -> dict:
+    """Topic-aware selection across ALL context pools in ONE cheap model call
+    (previously up to six separate calls per post). Each pool is a numbered
+    list; the model returns item numbers per pool — numbers, not text, because
+    quotes contain characters that break JSON when echoed back.
+    Falls back to first-N per pool if topic is missing or the call fails."""
+    fallback = {name: items[:cap] for name, (items, cap) in pools.items()}
+
+    needs_selection = {name: (items, cap) for name, (items, cap) in pools.items() if len(items) > cap}
+    if not topic or not needs_selection:
         return fallback
 
-    listing = "\n".join(f"{i}. {item}" for i, item in enumerate(items, 1))
+    sections = []
+    for name, (items, cap) in needs_selection.items():
+        listing = "\n".join(f"  {i}. {item}" for i, item in enumerate(items, 1))
+        sections.append(f"{name} (pick up to {cap}):\n{listing}")
+
     prompt = f"""
 A marketing post is being written about this topic: "{topic}"
 
-Below is a numbered pool of {purpose} available for this company. Select the {max_items} MOST
-relevant to the topic above — the ones that would make the strongest, most specific
-supporting evidence for a post on this exact topic.
+For each pool below, select the item NUMBERS most relevant to the topic — the
+strongest, most specific supporting evidence for a post on this exact topic.
 
-POOL:
-{listing}
+{chr(10).join(sections)}
 
-Return ONLY a JSON array of up to {max_items} item NUMBERS (integers) from the list above,
-most relevant first, no explanation. Return numbers only, never the item text itself
-(some items contain quote marks that break JSON if copied directly):
-[3, 7, 1]
+Return ONLY a JSON object mapping each pool name to an array of item numbers
+(integers), most relevant first, no explanation:
+{{"pool_name": [3, 1], ...}}
 """
 
-    selected_numbers = _claude_json_list(prompt)
-    if not selected_numbers:
+    result = llm.complete_json(prompt, model=llm.MODEL_LIGHT, max_tokens=1000, retries=1)
+    if not isinstance(result, dict):
         return fallback
 
-    result = []
-    for n in selected_numbers:
-        try:
-            idx = int(n)
-        except (TypeError, ValueError):
+    selected = dict(fallback)
+    for name, (items, cap) in needs_selection.items():
+        numbers = result.get(name)
+        if not isinstance(numbers, list):
             continue
-        if 1 <= idx <= len(items):
-            result.append(items[idx - 1])
-
-    return result[:max_items] if result else fallback
+        picked = []
+        for n in numbers:
+            try:
+                idx = int(n)
+            except (TypeError, ValueError):
+                continue
+            if 1 <= idx <= len(items):
+                picked.append(items[idx - 1])
+        if picked:
+            selected[name] = picked[:cap]
+    return selected
 
 
 def brain_to_context(brain: dict, product_name: str = None, topic: str = None) -> str:
-    """Convert brain JSON into context string for Layer 2 strategy agent.
-    When topic is given, quotes/metrics/case studies are selected for relevance
-    to that specific post rather than always showing the same first few."""
+    """Convert brain JSON into the context string for the strategy agent.
+    When topic is given, quotes/metrics/case studies/offers are selected for
+    relevance to that specific post rather than always the same first few."""
 
     nl = "\n"
     metrics = brain.get("key_metrics", [])
@@ -409,31 +368,25 @@ PRODUCT FOCUS: {p['name']}
 """
                 break
 
-    metrics = select_by_relevance(metrics, topic, "company/product metrics and stats", max_items=10)
-    quotes = select_by_relevance(brain.get("customer_quotes", []), topic, "customer quotes", max_items=4)
-    case_studies = select_by_relevance(brain.get("case_study_results", []), topic, "case study results", max_items=4)
-
-    # Consumer-shaped sections: only included when the brain actually has them,
-    # so legacy B2B brains don't get noise sections full of "None".
-    offers = select_by_relevance(brain.get("offers_pricing") or [], topic, "offers, pricing and promotions", max_items=6)
-    pain_points = select_by_relevance(brain.get("customer_pain_points") or [], topic, "customer pain points and emotional drivers", max_items=5)
-    promises = select_by_relevance(brain.get("brand_promises") or [], topic, "transformation and outcome promises", max_items=5)
+    pools = {name: (brain.get(name) or [], cap) for name, cap in _CONTEXT_POOLS}
+    pools["key_metrics"] = (metrics, 10)  # product focus may have swapped the pool
+    sel = _select_relevant(pools, topic)
 
     consumer_sections = ""
-    if offers:
+    if sel["offers_pricing"]:
         consumer_sections += f"""
 OFFERS & PRICING:
-{nl.join([f"  - {o}" for o in offers])}
+{nl.join([f"  - {o}" for o in sel["offers_pricing"]])}
 """
-    if pain_points:
+    if sel["customer_pain_points"]:
         consumer_sections += f"""
 CUSTOMER PAIN POINTS (what the brand solves for people):
-{nl.join([f"  - {p}" for p in pain_points])}
+{nl.join([f"  - {p}" for p in sel["customer_pain_points"]])}
 """
-    if promises:
+    if sel["brand_promises"]:
         consumer_sections += f"""
 BRAND PROMISES (outcomes stated to the customer):
-{nl.join([f"  - {b}" for b in promises])}
+{nl.join([f"  - {b}" for b in sel["brand_promises"]])}
 """
 
     return f"""
@@ -446,16 +399,16 @@ COMPANY KNOWLEDGE:
 - ICP: {brain.get('icp', '')}
 {product_section}
 KEY METRICS:
-{nl.join([f"  - {m}" for m in metrics]) or "  - None"}
+{nl.join([f"  - {m}" for m in sel["key_metrics"]]) or "  - None"}
 
 VALUE PROPOSITIONS:
 {nl.join([f"  - {v}" for v in brain.get("value_propositions", [])]) or "  - None"}
 {consumer_sections}
 CUSTOMER QUOTES (use verbatim):
-{nl.join([f"  - {q}" for q in quotes]) or "  - None"}
+{nl.join([f"  - {q}" for q in sel["customer_quotes"]]) or "  - None"}
 
 CASE STUDY RESULTS:
-{nl.join([f"  - {c}" for c in case_studies]) or "  - None"}
+{nl.join([f"  - {c}" for c in sel["case_study_results"]]) or "  - None"}
 
 DIFFERENTIATORS:
 {nl.join([f"  - {d}" for d in brain.get("differentiators", [])]) or "  - None"}
@@ -478,8 +431,6 @@ AWARDS & CERTIFICATIONS:
 # ─────────────────────────────────────────────
 
 if __name__ == "__main__":
-    import sys
-
     url = sys.argv[1] if len(sys.argv) > 1 else input("Enter website URL: ").strip()
 
     brain = build_brain(url)

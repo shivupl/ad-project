@@ -2,17 +2,14 @@ import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-import anthropic
-import requests
 import json
-import os
 import re
-from urllib.parse import urljoin
-from dotenv import load_dotenv
-from paths import DATA_DIR
 
-load_dotenv()
-client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+import requests
+from urllib.parse import urljoin
+
+import llm
+from paths import DATA_DIR
 
 
 # ─────────────────────────────────────────────
@@ -99,9 +96,7 @@ def _rendered_html_fallback(url: str) -> str:
     shell or a bot challenge to plain requests (Adobe, Cloudflare-protected
     sites). Returns "" if unavailable so the caller degrades gracefully."""
     try:
-        from firecrawl import FirecrawlApp
-        fc = FirecrawlApp(api_key=os.getenv("FIRECRAWL_API_KEY"))
-        doc = fc.scrape(url, formats=["rawHtml"])
+        doc = llm.firecrawl.scrape(url, formats=["rawHtml"])
         return doc.raw_html or ""
     except Exception as e:
         print(f"Rendered-scrape fallback failed: {e}")
@@ -226,23 +221,7 @@ Rules:
 - Return ONLY the JSON, nothing else
 """
 
-    response = client.messages.create(
-        model="claude-sonnet-5",
-        max_tokens=2000,
-        thinking={"type": "disabled"},
-        messages=[{"role": "user", "content": prompt}]
-    )
-
-    raw = response.content[0].text.strip()
-    raw = re.sub(r'^```json\s*', '', raw)
-    raw = re.sub(r'^```\s*', '', raw)
-    raw = re.sub(r'\s*```$', '', raw)
-
-    try:
-        return json.loads(raw)
-    except json.JSONDecodeError as e:
-        print(f"JSON parse error: {e}")
-        return {}
+    return llm.complete_json(prompt, max_tokens=2000) or {}
 
 
 # ─────────────────────────────────────────────

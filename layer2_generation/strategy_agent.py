@@ -2,18 +2,12 @@ import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-import anthropic
 import json
-import os
-import re
-from dotenv import load_dotenv
 
+import llm
 from layer1_extraction.extract_brain import brain_to_context
 from layer1_extraction.extract_brand import marketing_profile_to_context
 from paths import LINKEDIN_STRATEGY_SKILL
-
-load_dotenv()
-client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
 
 STRATEGY_SYSTEM_PROMPT = LINKEDIN_STRATEGY_SKILL.read_text()
 
@@ -21,16 +15,12 @@ DEFAULT_PROFILE_LINE = "MARKETING PROFILE: Not provided — default to a profess
 
 
 def generate_brief(topic: str, brain: dict, brand: dict = None, product_name: str = None) -> dict:
-    """
-    Takes a user topic + brain JSON (+ optional brand JSON for its marketing
-    profile) → returns structured post brief with separate 'caption' (LinkedIn
-    post text) and 'graphic' (image content) sections.
-    """
+    """Topic + brain JSON (+ optional brand JSON for its marketing profile) →
+    structured post brief with separate 'caption' (post text) and 'graphic'
+    (image copy) sections."""
 
     brain_context = brain_to_context(brain, product_name=product_name, topic=topic)
-    profile_block = marketing_profile_to_context(brand) if brand else ""
-    if not profile_block:
-        profile_block = DEFAULT_PROFILE_LINE
+    profile_block = (marketing_profile_to_context(brand) if brand else "") or DEFAULT_PROFILE_LINE
 
     user_message = f"""
 COMPANY KNOWLEDGE:
@@ -46,33 +36,19 @@ Adapt post type, register, and copy density to the MARKETING PROFILE.
 Remember: caption and graphic are separate artifacts with separate word budgets.
 """
 
-    response = client.messages.create(
-        model="claude-sonnet-5",
-        max_tokens=1500,
-        thinking={"type": "disabled"},
-        system=STRATEGY_SYSTEM_PROMPT,
-        messages=[{"role": "user", "content": user_message}],
-    )
+    return llm.complete_json(user_message, max_tokens=1500, system=STRATEGY_SYSTEM_PROMPT) or {}
 
-    raw = response.content[0].text.strip()
-    raw = re.sub(r'^```json\s*', '', raw)
-    raw = re.sub(r'^```\s*', '', raw)
-    raw = re.sub(r'\s*```$', '', raw)
 
-    try:
-        return json.loads(raw)
-    except json.JSONDecodeError as e:
-        print(f"JSON parse error: {e}")
-        print(f"Raw: {raw[:300]}")
-        return {}
-
+# ─────────────────────────────────────────────
+# Brief validation and conversion
+# ─────────────────────────────────────────────
 
 GRAPHIC_WORD_LIMITS = {"headline": 8, "contrast_line": 8, "subtext": 12, "cta": 5}
 MAX_GRAPHIC_METRICS = 2
 METRIC_WORD_LIMIT = 6
 
 
-def validate_brief(brief: dict) -> list[str]:
+def validate_brief(brief: dict) -> list:
     """Checks the graphic section against the hard word-count limits defined in
     the strategy skill. Returns human-readable warnings (empty = clean)."""
     warnings = []
@@ -99,12 +75,7 @@ def validate_brief(brief: dict) -> list[str]:
 def brief_to_caption(brief: dict) -> str:
     """Converts the caption section into plain text ready to paste into LinkedIn."""
     caption = brief.get("caption", {})
-
-    hook = caption.get("hook", "")
-    body = caption.get("body", "")
-    cta = caption.get("cta", "")
-
-    return f"{hook}\n\n{body}\n\n{cta}"
+    return f"{caption.get('hook', '')}\n\n{caption.get('body', '')}\n\n{caption.get('cta', '')}"
 
 
 def brief_to_post_content(brief: dict, logo_b64: str) -> str:
@@ -139,15 +110,15 @@ The only text allowed beyond this list is the company name/URL as a small label.
 """
 
 
-if __name__ == "__main__":
-    import sys
-    import base64
+# ─────────────────────────────────────────────
+# RUN
+# ─────────────────────────────────────────────
 
+if __name__ == "__main__":
     brain_file = sys.argv[1] if len(sys.argv) > 1 else input("Brain JSON path: ").strip()
     topic = sys.argv[2] if len(sys.argv) > 2 else input("What do you want to post about? ").strip()
     product_name = sys.argv[3] if len(sys.argv) > 3 else None
-    logo_path = sys.argv[4] if len(sys.argv) > 4 else input("Logo path: ").strip()
-    brand_file = sys.argv[5] if len(sys.argv) > 5 else None
+    brand_file = sys.argv[4] if len(sys.argv) > 4 else None
 
     with open(brain_file) as f:
         brain = json.load(f)
@@ -157,18 +128,13 @@ if __name__ == "__main__":
         with open(brand_file) as f:
             brand = json.load(f)
 
-    with open(logo_path, "rb") as f:
-        logo_b64 = base64.b64encode(f.read()).decode()
-
     print(f"\nGenerating brief for topic: '{topic}'...")
     brief = generate_brief(topic, brain, brand=brand, product_name=product_name)
 
     if brief:
         print("\n--- FULL BRIEF ---")
         print(json.dumps(brief, indent=2))
-
-        print("\n--- LINKEDIN CAPTION (post text) ---")
+        print("\n--- CAPTION ---")
         print(brief_to_caption(brief))
-
-        print("\n--- GRAPHIC CONTENT ---")
-        print(brief_to_post_content(brief, logo_b64))
+        for w in validate_brief(brief):
+            print(f"warning: {w}")

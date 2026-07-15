@@ -2,19 +2,12 @@ import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-import anthropic
 import base64
 import json
-import os
-import re
 from datetime import date
-from dotenv import load_dotenv
 
+import llm
 from layer1_extraction.extract_brain import BRAIN_SCHEMA_PROMPT, run_brain_extraction
-from paths import DATA_DIR
-
-load_dotenv()
-client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
 
 SUPPORTED_EXTENSIONS = {".pdf", ".txt", ".md"}
 MAX_PDF_BYTES = 30 * 1024 * 1024  # stay under the API's 32 MB request cap
@@ -117,35 +110,14 @@ Merge rules:
 Return ONLY the merged JSON object, no explanation, no markdown, no backticks.
 """
 
-    try:
-        response = client.messages.create(
-            model="claude-sonnet-5",
-            max_tokens=8000,
-            thinking={"type": "disabled"},
-            messages=[{"role": "user", "content": prompt}],
-        )
-
-        if response.stop_reason == "max_tokens":
-            print("Warning: merge response hit max_tokens — keeping existing brain unchanged")
-            return base
-
-        raw = response.content[0].text.strip()
-        raw = re.sub(r'^```json\s*', '', raw)
-        raw = re.sub(r'^```\s*', '', raw)
-        raw = re.sub(r'\s*```$', '', raw)
-
-        merged = json.loads(raw)
-        if not isinstance(merged, dict) or not merged.get("company_name"):
-            print("Merge produced invalid output — keeping existing brain unchanged")
-            return base
-
-        if sources:
-            merged["sources"] = sources
-        return merged
-
-    except Exception as e:
-        print(f"Merge failed, keeping existing brain unchanged: {e}")
+    merged = llm.complete_json(prompt, max_tokens=8000, retries=1)
+    if not isinstance(merged, dict) or not merged.get("company_name"):
+        print("Merge failed or produced invalid output — keeping existing brain unchanged")
         return base
+
+    if sources:
+        merged["sources"] = sources
+    return merged
 
 
 # ─────────────────────────────────────────────
@@ -190,8 +162,5 @@ if __name__ == "__main__":
         print("Usage: python layer1_extraction/enrich_brain.py <brain_json_path> <doc1> [doc2 ...]")
         sys.exit(1)
 
-    brain_path = sys.argv[1]
-    doc_paths = sys.argv[2:]
-
-    brain = enrich_brain(brain_path, doc_paths)
+    brain = enrich_brain(sys.argv[1], sys.argv[2:])
     print(json.dumps(brain, indent=2))

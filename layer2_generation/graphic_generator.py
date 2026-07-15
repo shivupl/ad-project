@@ -8,23 +8,15 @@ import json
 import os
 import re
 
-import anthropic
-from dotenv import load_dotenv
-
+import llm
 from layer1_extraction.extract_brand import brand_to_prompt
-from paths import DATA_DIR, FRONTEND_DESIGN_SKILL, ROOT
-from layer2_generation.render_graphic import html_to_png, repair_graphic_html, review_graphic_png
-from layer2_generation.senior_designer import review_and_enhance
+from layer2_generation.review import (
+    CANVAS_HEIGHT, CANVAS_WIDTH, find_defects, html_to_png, repair_html, review_and_enhance,
+)
 from layer2_generation.strategy_agent import brief_to_caption, brief_to_post_content, generate_brief, validate_brief
-
-load_dotenv()
-client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+from paths import DATA_DIR, FRONTEND_DESIGN_SKILL, ROOT
 
 LOGO_PLACEHOLDER = "__LOGO_BASE64__"
-CANVAS_WIDTH = 1200
-CANVAS_HEIGHT = 627
-# 3 attempts: room for one text-side correction and one visual-side correction
-MAX_GENERATION_ATTEMPTS = 3
 # Allowance on top of the brief's own copy for small labels (company name, url,
 # chip captions) — anything past this means the model invented paragraphs.
 EXTRA_WORDS_ALLOWANCE = 25
@@ -34,6 +26,10 @@ def load_logo_b64(logo_path: str) -> str:
     with open(logo_path, "rb") as f:
         return base64.b64encode(f.read()).decode()
 
+
+# ─────────────────────────────────────────────
+# STEP 1: Junior draft
+# ─────────────────────────────────────────────
 
 def _build_system_prompt(correction: str = None) -> str:
     skill = FRONTEND_DESIGN_SKILL.read_text()
@@ -66,46 +62,17 @@ OUTPUT RULES:
 {correction_block}"""
 
 
-def generate_graphic_html(
-    brand_prompt: str,
-    post_content: str,
-    logo_b64: str,
-    correction: str = None,
-) -> str:
-    response = client.messages.create(
-        model="claude-sonnet-5",
-        max_tokens=8000,
-        thinking={"type": "disabled"},
-        system=_build_system_prompt(correction),
-        messages=[
-            {
-                "role": "user",
-                "content": [
-                    {
-                        "type": "image",
-                        "source": {
-                            "type": "base64",
-                            "media_type": "image/png",
-                            "data": logo_b64,
-                        },
-                    },
-                    {
-                        "type": "text",
-                        "text": brand_prompt + "\n\n" + post_content,
-                    },
-                ],
-            }
-        ],
-    )
+def generate_graphic_html(brand_prompt: str, post_content: str, logo_b64: str, correction: str = None) -> str:
+    content = [
+        {"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": logo_b64}},
+        {"type": "text", "text": brand_prompt + "\n\n" + post_content},
+    ]
+    return llm.complete(content, max_tokens=8000, system=_build_system_prompt(correction))
 
-    if response.stop_reason == "max_tokens":
-        raise RuntimeError("Graphic generation hit max_tokens — output would be broken HTML.")
 
-    html = response.content[0].text.strip()
-    html = re.sub(r'^```(?:html)?\s*', '', html)
-    html = re.sub(r'\s*```$', '', html)
-    return html
-
+# ─────────────────────────────────────────────
+# STEP 2: Text-side validation (fast, deterministic)
+# ─────────────────────────────────────────────
 
 _DECORATIVE_CHARS = re.compile(r'[→←↑↓➜➔›»·]')
 
@@ -126,7 +93,7 @@ def _normalize_text(text: str) -> str:
     return re.sub(r'\s+', ' ', text).strip().lower()
 
 
-def validate_graphic(html: str, brief: dict) -> list[str]:
+def validate_graphic(html: str, brief: dict) -> list:
     """Structural checks against hard constraints. Returns issues (empty = clean)."""
     issues = []
     graphic = brief.get("graphic", {})
@@ -162,15 +129,18 @@ def validate_graphic(html: str, brief: dict) -> list[str]:
     return issues
 
 
+# ─────────────────────────────────────────────
+# STEP 3: Orchestration — junior → senior → defect gate
+# ─────────────────────────────────────────────
+
 def generate_graphic(brand_prompt: str, post_content: str, logo_b64: str, brief: dict, png_path: str = None) -> tuple:
     """Junior → senior pipeline:
-      1. JUNIOR drafts the graphic; text checks (exact copy, canvas, word
-         budget) regenerate once with corrections if the output is broken.
-      2. SENIOR DESIGNER reviews the rendered screenshot + source (its own
-         skill): fixes defects, critiques the craft, returns an enhanced
-         version of the same design. Discarded if it violates the text checks.
-      3. Final defect gate: vision inspection of the shipped render; any
-         remaining overlap/clipping is repaired surgically.
+      1. JUNIOR drafts the graphic; text checks regenerate once if broken.
+      2. SENIOR DESIGNER reviews the rendered screenshot + source: fixes
+         defects, critiques the craft, returns an enhanced version of the same
+         design. Discarded if it violates the text checks.
+      3. Final defect gate: vision inspection of the shipped render; remaining
+         overlap/clipping is repaired surgically.
     Returns (final_html_with_logo, warnings, critique)."""
 
     def substitute(h):
@@ -205,18 +175,22 @@ def generate_graphic(brand_prompt: str, post_content: str, logo_b64: str, brief:
     html_to_png(substitute(html), png_path)
 
     # ── Stage 3: final defect gate + surgical repair ──
-    defects = review_graphic_png(png_path)
+    defects = find_defects(png_path)
     if defects:
         print(f"Final render has defects, repairing in place: {defects}")
-        repaired = repair_graphic_html(html, png_path, defects)
+        repaired = repair_html(html, png_path, defects)
         if not validate_graphic(repaired, brief):
             html = repaired
         html_to_png(substitute(html), png_path)
-        defects = review_graphic_png(png_path)
+        defects = find_defects(png_path)
 
     issues = [f"The rendered image shows: {d}" for d in defects]
     return substitute(html), issues, critique
 
+
+# ─────────────────────────────────────────────
+# STEP 4: Full pipeline entry point
+# ─────────────────────────────────────────────
 
 def run(
     topic: str,
@@ -236,14 +210,14 @@ def run(
     png_path = png_path or str(DATA_DIR / "output.png")
 
     with open(brand_path) as f:
-        profile = json.load(f)
+        brand = json.load(f)
     with open(brain_path) as f:
         brain = json.load(f)
 
     logo_b64 = load_logo_b64(logo_path)
-    brand_prompt = brand_to_prompt(profile)
+    brand_prompt = brand_to_prompt(brand)
 
-    brief = generate_brief(topic, brain, brand=profile, product_name=product_name)
+    brief = generate_brief(topic, brain, brand=brand, product_name=product_name)
     if not brief:
         raise RuntimeError("Strategy agent failed — no brief generated")
 
@@ -274,20 +248,24 @@ def run(
     }
 
 
-if __name__ == "__main__":
-    topic = "CreditX deployment speed"
-    product_name = "CreditX"
+# ─────────────────────────────────────────────
+# RUN
+# ─────────────────────────────────────────────
 
+if __name__ == "__main__":
     result = run(
-        topic=topic,
+        topic="CreditX deployment speed",
         brand_path=str(DATA_DIR / "brand_finbotsai.json"),
         brain_path=str(DATA_DIR / "brain_finbotsai.json"),
         logo_path=str(ROOT / "logo.png"),
-        product_name=product_name,
+        product_name="CreditX",
     )
 
-    print("--- LINKEDIN CAPTION ---")
+    print("--- CAPTION ---")
     print(result["caption"])
-    print("\n--- GRAPHIC CONTENT ---")
-    print(result["post_content"])
-    print(f"\nDone — open {result['html_path']} in browser")
+    if result["critique"]:
+        print("\n--- SENIOR REVIEW ---")
+        print(result["critique"])
+    for w in result["warnings"]:
+        print(f"warning: {w}")
+    print(f"\nDone — PNG: {result['png_path']}  HTML: {result['html_path']}")
