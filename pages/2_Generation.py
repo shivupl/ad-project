@@ -56,6 +56,11 @@ if generate:
 
     st.success("Done!")
 
+    if result.get("warnings"):
+        with st.expander(f"⚠️ {len(result['warnings'])} validation warning(s)", expanded=True):
+            for w in result["warnings"]:
+                st.markdown(f"- {w}")
+
     tab_caption, tab_graphic, tab_brief = st.tabs(["Caption", "Graphic", "Brief"])
 
     with tab_caption:

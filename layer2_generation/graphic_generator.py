@@ -3,6 +3,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import base64
+import html as html_lib
 import json
 import os
 import re
@@ -12,10 +13,18 @@ from dotenv import load_dotenv
 
 from layer1_extraction.extract_brand import brand_to_prompt
 from paths import DATA_DIR, FRONTEND_DESIGN_SKILL, ROOT
-from layer2_generation.strategy_agent import brief_to_caption, brief_to_post_content, generate_brief
+from layer2_generation.strategy_agent import brief_to_caption, brief_to_post_content, generate_brief, validate_brief
 
 load_dotenv()
 client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+
+LOGO_PLACEHOLDER = "__LOGO_BASE64__"
+CANVAS_WIDTH = 1200
+CANVAS_HEIGHT = 627
+MAX_GENERATION_ATTEMPTS = 2
+# Allowance on top of the brief's own copy for small labels (company name, url,
+# chip captions) — anything past this means the model invented paragraphs.
+EXTRA_WORDS_ALLOWANCE = 25
 
 
 def load_logo_b64(logo_path: str) -> str:
@@ -23,29 +32,48 @@ def load_logo_b64(logo_path: str) -> str:
         return base64.b64encode(f.read()).decode()
 
 
+def _build_system_prompt(correction: str = None) -> str:
+    skill = FRONTEND_DESIGN_SKILL.read_text()
+    correction_block = f"\n\nFIX THESE SPECIFIC PROBLEMS FROM YOUR LAST ATTEMPT:\n{correction}\n" if correction else ""
+
+    return f"""{skill}
+
+You are generating a single marketing graphic as a self-contained HTML file for a social post.
+
+CRITICAL — CANVAS SIZE:
+- The outer container MUST be exactly {CANVAS_WIDTH}px wide by {CANVAS_HEIGHT}px tall — a wide horizontal rectangle (LinkedIn format).
+- Do not default to a square 1080x1080 canvas out of habit. Design horizontally: {CANVAS_HEIGHT}px of vertical space is tight, favor left/right splits over tall stacks.
+- Set explicit width: {CANVAS_WIDTH}px; height: {CANVAS_HEIGHT}px; overflow: hidden on the outer wrapper.
+
+CRITICAL — COPY DISCIPLINE (this is a social graphic, not a slide):
+- The EXACT COPY list in the brief is the ONLY text allowed on the canvas, reproduced character-for-character.
+- Do NOT write any additional copy: no explanatory paragraphs, no extra bullets, no invented taglines. A viewer must grasp the graphic in 2 seconds — every extra word you add breaks it.
+- The only permitted additions are tiny labels: the company name/URL and short chip captions.
+
+CRITICAL — LOGO:
+- A logo image is attached for layout/color reference only. Do NOT transcribe its base64 data yourself.
+- Where the logo belongs, emit exactly: <img src="data:image/png;base64,{LOGO_PLACEHOLDER}" alt="logo" style="height:32px;width:auto" />
+- The placeholder text `{LOGO_PLACEHOLDER}` must appear verbatim exactly once.
+
+OUTPUT RULES:
+- Output ONLY raw HTML — no markdown, no backticks, no explanation.
+- Self-contained except the logo placeholder — no other external images. Google Fonts via @import is allowed.
+- Everything must fit the {CANVAS_WIDTH}x{CANVAS_HEIGHT} canvas without clipping or scrolling.
+- Output the complete HTML file including the closing </html> tag.
+{correction_block}"""
+
+
 def generate_graphic_html(
     brand_prompt: str,
     post_content: str,
     logo_b64: str,
+    correction: str = None,
 ) -> str:
-    skill = FRONTEND_DESIGN_SKILL.read_text()
-    system_prompt = f"""{skill}
-You are generating a marketing graphic as a self-contained HTML file.
-
-CRITICAL OUTPUT RULES:
-- Output ONLY raw HTML — no markdown, no backticks, no explanation
-- The graphic must be exactly 1200x627px (LinkedIn format)
-- Everything must be self-contained — no external images
-- Google Fonts via @import is allowed
-- All content must be visible without scrolling
-- Do not truncate — output the complete HTML file including closing tags
-"""
-
     response = client.messages.create(
         model="claude-sonnet-5",
         max_tokens=8000,
         thinking={"type": "disabled"},
-        system=system_prompt,
+        system=_build_system_prompt(correction),
         messages=[
             {
                 "role": "user",
@@ -67,10 +95,87 @@ CRITICAL OUTPUT RULES:
         ],
     )
 
+    if response.stop_reason == "max_tokens":
+        raise RuntimeError("Graphic generation hit max_tokens — output would be broken HTML.")
+
     html = response.content[0].text.strip()
     html = re.sub(r'^```(?:html)?\s*', '', html)
     html = re.sub(r'\s*```$', '', html)
     return html
+
+
+_DECORATIVE_CHARS = re.compile(r'[→←↑↓➜➔›»·]')
+
+
+def _visible_text(html: str) -> str:
+    """Rendered text only: styles/scripts/tags stripped, entities decoded."""
+    text = re.sub(r'<(style|script)[^>]*>.*?</\1>', ' ', html, flags=re.DOTALL | re.IGNORECASE)
+    text = re.sub(r'<[^>]+>', ' ', text)
+    text = html_lib.unescape(text)
+    return re.sub(r'\s+', ' ', text).strip()
+
+
+def _normalize_text(text: str) -> str:
+    """For copy comparison: markup, entities and decorative glyphs ignored."""
+    text = re.sub(r'<[^>]+>', ' ', text)
+    text = html_lib.unescape(text)
+    text = _DECORATIVE_CHARS.sub(' ', text)
+    return re.sub(r'\s+', ' ', text).strip().lower()
+
+
+def validate_graphic(html: str, brief: dict) -> list[str]:
+    """Structural checks against hard constraints. Returns issues (empty = clean)."""
+    issues = []
+    graphic = brief.get("graphic", {})
+
+    if not html.lstrip().lower().startswith(("<!doctype", "<html")):
+        issues.append("Output does not start with <!DOCTYPE>/<html> — leftover commentary or fences.")
+    if not html.rstrip().lower().endswith("</html>"):
+        issues.append("Output does not end with </html> — likely truncated.")
+
+    if not (re.search(rf"width:\s*{CANVAS_WIDTH}px", html) and re.search(rf"height:\s*{CANVAS_HEIGHT}px", html)):
+        issues.append(f"Canvas is not declared as exactly {CANVAS_WIDTH}px x {CANVAS_HEIGHT}px — this must be a wide rectangle, not a square.")
+
+    visible_norm = _normalize_text(html)
+    for field in ("headline", "cta"):
+        value = (graphic.get(field) or "").strip()
+        if value and _normalize_text(value) not in visible_norm:
+            issues.append(f'The exact "{field}" copy — "{value}" — does not appear verbatim in the output.')
+
+    if LOGO_PLACEHOLDER not in html:
+        issues.append(f"Logo placeholder `{LOGO_PLACEHOLDER}` is missing — logo will not render.")
+
+    # Copy-discipline check: total visible words must stay close to the brief's own copy.
+    copy_fields = [graphic.get(f) or "" for f in ("headline", "stat_hero", "contrast_line", "subtext", "cta")]
+    copy_fields += list((graphic.get("metrics") or [])[:2])
+    budget = sum(len(str(v).split()) for v in copy_fields) + EXTRA_WORDS_ALLOWANCE
+    visible_words = len(_visible_text(html).split())
+    if visible_words > budget:
+        issues.append(
+            f"Too much text on the canvas: {visible_words} visible words vs a budget of {budget}. "
+            f"Remove ALL copy that is not in the EXACT COPY list — no paragraphs, no extra bullets."
+        )
+
+    return issues
+
+
+def generate_graphic(brand_prompt: str, post_content: str, logo_b64: str, brief: dict) -> tuple:
+    """Generate the graphic HTML, validating hard constraints and retrying once
+    with corrective feedback. Returns (final_html, warnings)."""
+    correction = None
+    html, issues = "", []
+
+    for attempt in range(1, MAX_GENERATION_ATTEMPTS + 1):
+        html = generate_graphic_html(brand_prompt, post_content, logo_b64, correction=correction)
+        issues = validate_graphic(html, brief)
+        if not issues:
+            break
+        if attempt < MAX_GENERATION_ATTEMPTS:
+            print(f"Graphic validation failed (attempt {attempt}), retrying with corrections: {issues}")
+            correction = "\n".join(f"- {i}" for i in issues)
+
+    html = html.replace(LOGO_PLACEHOLDER, logo_b64)
+    return html, issues
 
 
 def run(
@@ -101,14 +206,15 @@ def run(
         raise RuntimeError("Strategy agent failed — no brief generated")
 
     caption = brief_to_caption(brief)
-    post_content = brief_to_post_content(brief, logo_b64)
+    post_content = brief_to_post_content(brief, LOGO_PLACEHOLDER)
 
     with open(brief_path, "w") as f:
         json.dump(brief, f, indent=2)
     with open(caption_path, "w") as f:
         f.write(caption)
 
-    html = generate_graphic_html(brand_prompt, post_content, logo_b64)
+    html, warnings = generate_graphic(brand_prompt, post_content, logo_b64, brief)
+    warnings = validate_brief(brief) + warnings
     with open(html_path, "w") as f:
         f.write(html)
 
@@ -117,6 +223,7 @@ def run(
         "caption": caption,
         "post_content": post_content,
         "html": html,
+        "warnings": warnings,
         "caption_path": caption_path,
         "html_path": html_path,
         "brief_path": brief_path,

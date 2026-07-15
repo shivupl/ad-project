@@ -67,6 +67,35 @@ Remember: caption and graphic are separate artifacts with separate word budgets.
         return {}
 
 
+GRAPHIC_WORD_LIMITS = {"headline": 8, "contrast_line": 8, "subtext": 12, "cta": 5}
+MAX_GRAPHIC_METRICS = 2
+METRIC_WORD_LIMIT = 6
+
+
+def validate_brief(brief: dict) -> list[str]:
+    """Checks the graphic section against the hard word-count limits defined in
+    the strategy skill. Returns human-readable warnings (empty = clean)."""
+    warnings = []
+    graphic = brief.get("graphic", {})
+
+    for field, limit in GRAPHIC_WORD_LIMITS.items():
+        value = (graphic.get(field) or "").strip()
+        if value:
+            words = len(value.split())
+            if words > limit:
+                warnings.append(f'graphic.{field} is {words} words (limit {limit}): "{value}"')
+
+    metrics = graphic.get("metrics") or []
+    if len(metrics) > MAX_GRAPHIC_METRICS:
+        warnings.append(f"graphic.metrics has {len(metrics)} items (limit {MAX_GRAPHIC_METRICS}) — extra items are dropped from the graphic")
+    for m in metrics[:MAX_GRAPHIC_METRICS]:
+        words = len(str(m).split())
+        if words > METRIC_WORD_LIMIT:
+            warnings.append(f'graphic.metrics item is {words} words (limit {METRIC_WORD_LIMIT}): "{m}"')
+
+    return warnings
+
+
 def brief_to_caption(brief: dict) -> str:
     """Converts the caption section into plain text ready to paste into LinkedIn."""
     caption = brief.get("caption", {})
@@ -79,10 +108,13 @@ def brief_to_caption(brief: dict) -> str:
 
 
 def brief_to_post_content(brief: dict, logo_b64: str) -> str:
-    """Converts the graphic section into the prompt string for graphic generation."""
+    """Converts the graphic section into the prompt string for graphic generation.
+    Metrics are hard-capped in code — richer brains produce more material, and
+    a crammed graphic fails the squint test no matter how good the facts are."""
     graphic = brief.get("graphic", {})
 
-    metrics_str = "\n".join([f"  · {m}" for m in graphic.get("metrics", [])])
+    metrics = (graphic.get("metrics") or [])[:MAX_GRAPHIC_METRICS]
+    metrics_str = "\n".join([f"  · {m}" for m in metrics]) or "  (none)"
 
     stat_line = f'- Stat hero: "{graphic["stat_hero"]}"' if graphic.get("stat_hero") else ""
     contrast_line = f'- Contrast line: "{graphic["contrast_line"]}"' if graphic.get("contrast_line") else ""
@@ -93,12 +125,15 @@ def brief_to_post_content(brief: dict, logo_b64: str) -> str:
 POST TYPE: {brief.get('post_type', '').replace('_', ' ').title()}
 DESIGN NOTES: {graphic.get('design_notes', '')}
 
-EXACT COPY — do not change any wording:
+EXACT COPY — this is ALL the text allowed on the graphic. Reproduce it
+character-for-character. Do NOT add any other copy: no extra paragraphs, no
+additional bullet points, no explanatory sentences, no taglines you invent.
+The only text allowed beyond this list is the company name/URL as a small label.
 - Headline: "{graphic.get('headline', '')}"
 {stat_line}
 {contrast_line}
 - Subtext: "{graphic.get('subtext', '')}"
-- Supporting metrics:
+- Supporting metrics (max {MAX_GRAPHIC_METRICS}, render as short chips, not sentences):
 {metrics_str}
 - CTA: "{graphic.get('cta', '')}"
 """
