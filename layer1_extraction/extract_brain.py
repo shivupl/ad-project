@@ -6,6 +6,7 @@ import anthropic
 import json
 import os
 import re
+from datetime import date
 from dotenv import load_dotenv
 from firecrawl import FirecrawlApp
 from paths import DATA_DIR
@@ -191,28 +192,12 @@ def crawl_website(url: str, max_pages: int = 20) -> dict:
 # STEP 2: Extract company knowledge via Claude
 # ─────────────────────────────────────────────
 
-def extract_brain(crawled: dict) -> dict:
-    """Extract structured company knowledge from crawled content."""
-    print("Extracting company knowledge...")
-
-    all_content = ""
-    for page in crawled["pages"]:
-        all_content += f"\n\n--- PAGE: {page['url']} ---\n{page['content']}"
-
-    # Content is already relevance-curated by crawl_website() upstream, so this is
-    # a backstop cap (not the primary control): 20 pages x 8000-char cap = 160000
-    # worst case, 60000 covers a generous handful of full curated pages.
-    prompt = f"""
-You are a marketing knowledge analyst. Extract structured company knowledge for use by a marketing AI agent.
-
-Website: {crawled['url']}
-
-FULL SITE CONTENT:
-{all_content[:60000]}
-
+# Shared by website extraction (below) and document enrichment (enrich_brain.py)
+# so the two paths can never drift apart on schema.
+BRAIN_SCHEMA_PROMPT = """
 Return ONLY a valid JSON object, no explanation, no markdown, no backticks:
 
-{{
+{
   "company_name": "full company name",
   "tagline": "main tagline or value proposition",
   "industry": "industry/sector",
@@ -222,14 +207,14 @@ Return ONLY a valid JSON object, no explanation, no markdown, no backticks:
   "tone": "2-4 adjectives describing brand tone",
 
   "products": [
-    {{
+    {
       "name": "product name",
       "description": "1-3 sentences capturing what it does, direct from source content",
       "key_features": ["up to 8 features"],
       "use_cases": ["up to 5 use cases"],
       "metrics": ["specific stats for this product only"],
       "audience_type": "b2b | consumer | prosumer | null"
-    }}
+    }
   ],
 
   "value_propositions": ["up to 8 company-wide value props"],
@@ -244,7 +229,7 @@ Return ONLY a valid JSON object, no explanation, no markdown, no backticks:
   "key_messages": ["important messaging points"],
   "words_they_use": ["characteristic vocabulary and phrases"],
   "awards_certifications": ["awards, certifications, regulatory approvals"]
-}}
+}
 
 Rules:
 - Products must be separated — never mix metrics from different products
@@ -268,11 +253,15 @@ Rules:
 - Empty fields use null or []
 """
 
+
+def run_brain_extraction(content) -> dict:
+    """One claude-sonnet-4-6 extraction call with retry-once-on-parse-failure.
+    content: a plain string, or a list of content blocks (for document input)."""
     for attempt in range(2):
         response = client.messages.create(
             model="claude-sonnet-4-6",
             max_tokens=8000,
-            messages=[{"role": "user", "content": prompt}]
+            messages=[{"role": "user", "content": content}]
         )
 
         if response.stop_reason == "max_tokens":
@@ -292,6 +281,29 @@ Rules:
     return {}
 
 
+def extract_brain(crawled: dict) -> dict:
+    """Extract structured company knowledge from crawled content."""
+    print("Extracting company knowledge...")
+
+    all_content = ""
+    for page in crawled["pages"]:
+        all_content += f"\n\n--- PAGE: {page['url']} ---\n{page['content']}"
+
+    # Content is already relevance-curated by crawl_website() upstream, so this is
+    # a backstop cap (not the primary control): 20 pages x 8000-char cap = 160000
+    # worst case, 60000 covers a generous handful of full curated pages.
+    prompt = f"""
+You are a marketing knowledge analyst. Extract structured company knowledge for use by a marketing AI agent.
+
+Website: {crawled['url']}
+
+FULL SITE CONTENT:
+{all_content[:60000]}
+{BRAIN_SCHEMA_PROMPT}"""
+
+    return run_brain_extraction(prompt)
+
+
 # ─────────────────────────────────────────────
 # STEP 3: Build and save brain JSON
 # ─────────────────────────────────────────────
@@ -307,6 +319,8 @@ def build_brain(url: str, max_pages: int = 20) -> dict:
     if not brain:
         print("Brain extraction failed")
         return {}
+
+    brain["sources"] = [{"type": "website", "ref": url, "added": date.today().isoformat()}]
 
     company_slug = brain.get("company_name", "company").lower().replace(" ", "_").replace(".", "").replace("/", "")
     output_path  = DATA_DIR / f"brain_{company_slug}.json"

@@ -1,5 +1,8 @@
+import json
+
 import streamlit as st
 
+from layer1_extraction.enrich_brain import enrich_brain
 from layer1_extraction.extract_brain import brain_to_context, build_brain
 from layer1_extraction.extract_brand import brand_to_prompt, build_brand
 from paths import DATA_DIR, ROOT
@@ -119,3 +122,63 @@ if not extract_brand and not extract_brain:
         st.subheader("Existing data files")
         for f in existing:
             st.markdown(f"- `{f.name}`")
+
+st.divider()
+st.subheader("Enrich brain with documents")
+st.caption("Pitch decks, PDFs, notes → extracted with the same schema, merged into an existing brain (deduplicated)")
+
+brain_files = sorted(DATA_DIR.glob("brain_*.json"))
+
+if not brain_files:
+    st.info("Run **Extract Brain** first — enrichment needs an existing brain JSON to merge into.")
+else:
+    target_brain = st.selectbox("Brain to enrich", brain_files, format_func=lambda p: p.name)
+    doc_files = st.file_uploader(
+        "Documents (PDF, .txt, .md — export decks/docs to PDF)",
+        type=["pdf", "txt", "md"],
+        accept_multiple_files=True,
+    )
+    enrich = st.button("Enrich Brain", type="primary")
+
+    if enrich:
+        if not doc_files:
+            st.error("Upload at least one document.")
+        else:
+            uploads_dir = DATA_DIR / "uploads"
+            uploads_dir.mkdir(exist_ok=True)
+
+            doc_paths = []
+            for f in doc_files:
+                path = uploads_dir / f.name
+                with open(path, "wb") as out:
+                    out.write(f.getbuffer())
+                doc_paths.append(str(path))
+
+            before = json.load(open(target_brain))
+
+            with st.spinner(f"Extracting from {len(doc_paths)} document(s) and merging into {target_brain.name}..."):
+                try:
+                    merged = enrich_brain(str(target_brain), doc_paths)
+                except Exception as e:
+                    st.error(str(e))
+                    st.stop()
+
+            if merged == before:
+                st.warning("Enrichment made no changes (extraction or merge failed — brain left unchanged).")
+            else:
+                st.success(f"Enriched brain saved → `{target_brain}`")
+
+                count_fields = [
+                    "products", "key_metrics", "offers_pricing", "customer_pain_points",
+                    "brand_promises", "customer_quotes", "notable_clients",
+                    "case_study_results", "differentiators", "key_messages",
+                ]
+                rows = []
+                for field in count_fields:
+                    b = len(before.get(field) or [])
+                    a = len(merged.get(field) or [])
+                    rows.append({"field": field, "before": b, "after": a, "added": a - b})
+                st.table(rows)
+
+                with st.expander("Enriched brain JSON"):
+                    st.json(merged)
