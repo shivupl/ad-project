@@ -56,6 +56,10 @@ if generate:
 
     st.success("Done!")
 
+    if result.get("critique"):
+        with st.expander("🎨 Senior designer review", expanded=False):
+            st.markdown(result["critique"])
+
     if result.get("warnings"):
         with st.expander(f"⚠️ {len(result['warnings'])} validation warning(s)", expanded=True):
             for w in result["warnings"]:
