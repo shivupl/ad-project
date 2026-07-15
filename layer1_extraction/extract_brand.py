@@ -19,41 +19,128 @@ client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
 # STEP 1: Scrape homepage HTML + CSS
 # ─────────────────────────────────────────────
 
+_FONT_CDN_HOSTS = (
+    "fonts.googleapis.com", "fonts.bunny.net", "use.typekit.net",
+    "fonts.cdnfonts.com", "cloud.typography.com", "fast.fonts.net",
+)
+
+_GENERIC_FONT_TOKENS = {
+    "sans-serif", "serif", "monospace", "cursive", "fantasy",
+    "system-ui", "-apple-system", "blinkmacsystemfont",
+    "ui-sans-serif", "ui-serif", "ui-monospace",
+    "inherit", "initial", "unset",
+}
+
+_ICON_FONT_HINTS = ("awesome", "icon", "glyph", "material symbols", "material icons", "dashicons", "eicons")
+
+
+def _collect_font_evidence(html: str, css: str) -> str:
+    """Pull every font signal out of the FULL html/css before truncation can
+    eat it: font CDN links, @font-face names, font-family declarations."""
+    evidence = []
+
+    # Font CDN links — in HTML <link> tags and CSS @imports
+    hrefs = re.findall(r'<link[^>]+href=["\']([^"\']+)["\']', html)
+    hrefs += re.findall(r'@import\s+(?:url\()?\s*["\']?([^"\')\s;]+)', css)
+    cdn_links = [h for h in hrefs if any(host in h for host in _FONT_CDN_HOSTS)]
+    for link in list(dict.fromkeys(cdn_links))[:5]:
+        evidence.append(f"Font CDN link: {link}")
+
+    # @font-face family names (self-hosted fonts)
+    faces = re.findall(r'@font-face\s*\{[^}]*?font-family\s*:\s*["\']?([^;"\'}]+)', css, re.IGNORECASE)
+    face_names = [n.strip() for n in faces if n.strip()]
+    for name in list(dict.fromkeys(face_names))[:8]:
+        evidence.append(f"@font-face family: {name}")
+
+    # font-family declarations — first (primary) family only, generic stacks dropped
+    decls = re.findall(r'font-family\s*:\s*([^;}]+)', css, re.IGNORECASE)
+    primaries = []
+    for d in decls:
+        first = d.split(",")[0].strip().strip("'\"").strip()
+        if not first or first.lower() in _GENERIC_FONT_TOKENS or first.lower().startswith("var("):
+            continue
+        primaries.append(first)
+    for name in list(dict.fromkeys(primaries))[:10]:
+        evidence.append(f"font-family declaration: {name}")
+
+    return "\n".join(evidence)
+
+
+def _css_from_html(html: str, url: str, headers: dict) -> str:
+    """Inline <style> blocks plus fetched linked stylesheets from an HTML page."""
+    css_content = ""
+
+    style_blocks = re.findall(r'<style[^>]*>(.*?)</style>', html, re.DOTALL)
+    css_content += "\n".join(style_blocks)
+
+    # Any rel="stylesheet" link, not just *.css URLs
+    # (Google Fonts links look like fonts.googleapis.com/css2?family=... with no .css)
+    stylesheet_urls = []
+    for tag in re.findall(r'<link[^>]*>', html):
+        if "stylesheet" not in tag.lower():
+            continue
+        href = re.search(r'href=["\']([^"\']+)["\']', tag)
+        if href:
+            stylesheet_urls.append(href.group(1))
+
+    for css_url in stylesheet_urls[:8]:
+        try:
+            full_url = urljoin(url, css_url)
+            css_resp = requests.get(full_url, headers=headers, timeout=8)
+            css_content += "\n" + css_resp.text[:15000]
+        except:
+            pass
+
+    return css_content
+
+
+def _rendered_html_fallback(url: str) -> str:
+    """Fetch the JS-rendered page via Firecrawl, for sites that serve an empty
+    shell or a bot challenge to plain requests (Adobe, Cloudflare-protected
+    sites). Returns "" if unavailable so the caller degrades gracefully."""
+    try:
+        from firecrawl import FirecrawlApp
+        fc = FirecrawlApp(api_key=os.getenv("FIRECRAWL_API_KEY"))
+        doc = fc.scrape(url, formats=["rawHtml"])
+        return doc.raw_html or ""
+    except Exception as e:
+        print(f"Rendered-scrape fallback failed: {e}")
+        return ""
+
+
 def scrape_css(url: str) -> dict:
     """Scrape raw HTML and CSS from homepage only."""
     print(f"Scraping CSS from {url}...")
 
     headers = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"}
 
+    html = ""
     try:
         response = requests.get(url, headers=headers, timeout=15)
         html = response.text
-
-        css_content = ""
-
-        # Inline style blocks
-        style_blocks = re.findall(r'<style[^>]*>(.*?)</style>', html, re.DOTALL)
-        css_content += "\n".join(style_blocks)
-
-        # Linked stylesheets — grab up to 8 to maximize chance of hitting theme CSS
-        stylesheet_urls = re.findall(r'<link[^>]+href=["\']([^"\']+\.css[^"\']*)["\']', html)
-        for css_url in stylesheet_urls[:8]:
-            try:
-                full_url = urljoin(url, css_url)
-                css_resp = requests.get(full_url, headers=headers, timeout=8)
-                css_content += "\n" + css_resp.text[:15000]
-            except:
-                pass
-
-        return {
-            "html": html[:20000],
-            "css": css_content[:30000],
-            "url": url
-        }
-
     except Exception as e:
         print(f"Scrape error: {e}")
-        return {"html": "", "css": "", "url": url}
+
+    css_content = _css_from_html(html, url, headers) if html else ""
+    font_evidence = _collect_font_evidence(html, css_content)
+
+    # JS-heavy or bot-blocked sites give plain requests a shell/challenge page —
+    # thin CSS or zero font signals both smell like one (a real page virtually
+    # always has font-family declarations). Retry with a rendered scrape.
+    if len(css_content.strip()) < 2500 or not font_evidence:
+        print("Thin CSS / no font signals from plain scrape — trying rendered scrape via Firecrawl...")
+        rendered = _rendered_html_fallback(url)
+        if rendered:
+            html = rendered
+            css_content = _css_from_html(html, url, headers)
+            font_evidence = _collect_font_evidence(html, css_content)
+
+    return {
+        "html": html[:20000],
+        "css": css_content[:30000],
+        "font_evidence": font_evidence,
+        "url": url
+    }
 
 
 # ─────────────────────────────────────────────
@@ -68,6 +155,9 @@ def extract_brand(scraped: dict) -> dict:
 You are a brand analyst extracting visual identity and brand personality from a website.
 
 Website URL: {scraped['url']}
+
+FONT EVIDENCE (every font signal found on the full page, collected before truncation):
+{scraped.get('font_evidence') or 'none found'}
 
 HTML:
 {scraped['html']}
@@ -113,7 +203,14 @@ Return ONLY a valid JSON object with this exact nested structure, no explanation
 Rules:
 - Colors: extract from CSS only — look for :root variables, body, h1, .btn, a, background-color
 - Ignore WordPress admin colors: #f76a0c, #0693e3, #32373c, #1d2327 — these are NOT brand colors
-- Fonts: look for @import url(https://fonts.googleapis.com/...) lines in CSS
+- Fonts: the FONT EVIDENCE section is your primary source — do not return null if it has usable signals:
+  - Font CDN links carry family names in the URL itself (e.g. css2?family=Manrope:wght@400;700 → "Manrope")
+  - @font-face families are self-hosted brand fonts — clean framework-mangled names ("__Inter_a1b2c3" → "Inter", "SuisseIntl-Regular" → "Suisse Intl")
+  - font-family declarations show what's actually used; the most repeated non-generic family is usually the body font, a distinct one used sparingly is usually the display font
+  - Ignore icon fonts (Font Awesome, Material Icons, dashicons) — they are not brand typography
+  - If display and body appear to be the same family, return it for both
+  - Only return null if the evidence contains nothing but generic system stacks
+  - google_fonts_url: the full Google Fonts URL if one appears in the evidence, else null
 - Tone: 2-4 adjectives describing how the brand communicates
 - Target audience: 2-3 short descriptors of who they sell to (e.g. "enterprise lenders", "fintech startups")
 - Industry: short description of what space they operate in
