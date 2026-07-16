@@ -31,8 +31,8 @@ def load_logo_b64(logo_path: str) -> str:
 # STEP 1: Junior draft
 # ─────────────────────────────────────────────
 
-def _build_system_prompt(correction: str = None) -> str:
-    skill = FRONTEND_DESIGN_SKILL.read_text()
+def _build_system_prompt(correction: str = None, skill_path=None) -> str:
+    skill = (skill_path or FRONTEND_DESIGN_SKILL).read_text()
     correction_block = f"\n\nFIX THESE SPECIFIC PROBLEMS FROM YOUR LAST ATTEMPT:\n{correction}\n" if correction else ""
 
     return f"""{skill}
@@ -62,12 +62,13 @@ OUTPUT RULES:
 {correction_block}"""
 
 
-def generate_graphic_html(brand_prompt: str, post_content: str, logo_b64: str, correction: str = None) -> str:
+def generate_graphic_html(brand_prompt: str, post_content: str, logo_b64: str,
+                          correction: str = None, skill_path=None) -> str:
     content = [
         {"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": logo_b64}},
         {"type": "text", "text": brand_prompt + "\n\n" + post_content},
     ]
-    return llm.complete(content, max_tokens=8000, system=_build_system_prompt(correction))
+    return llm.complete(content, max_tokens=8000, system=_build_system_prompt(correction, skill_path))
 
 
 # ─────────────────────────────────────────────
