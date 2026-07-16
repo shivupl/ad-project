@@ -31,9 +31,15 @@ _GENERIC_FONT_TOKENS = {
 _ICON_FONT_HINTS = ("awesome", "icon", "glyph", "material symbols", "material icons", "dashicons", "eicons")
 
 
+def _is_icon_font(name: str) -> bool:
+    lower = name.lower()
+    return any(hint in lower for hint in _ICON_FONT_HINTS)
+
+
 def _collect_font_evidence(html: str, css: str) -> str:
     """Pull every font signal out of the FULL html/css before truncation can
-    eat it: font CDN links, @font-face names, font-family declarations."""
+    eat it: font CDN links, @font-face names, font-family declarations.
+    Icon fonts (Font Awesome etc.) are dropped — they are not brand typography."""
     evidence = []
 
     # Font CDN links — in HTML <link> tags and CSS @imports
@@ -45,7 +51,7 @@ def _collect_font_evidence(html: str, css: str) -> str:
 
     # @font-face family names (self-hosted fonts)
     faces = re.findall(r'@font-face\s*\{[^}]*?font-family\s*:\s*["\']?([^;"\'}]+)', css, re.IGNORECASE)
-    face_names = [n.strip() for n in faces if n.strip()]
+    face_names = [n.strip() for n in faces if n.strip() and not _is_icon_font(n)]
     for name in list(dict.fromkeys(face_names))[:8]:
         evidence.append(f"@font-face family: {name}")
 
@@ -55,6 +61,8 @@ def _collect_font_evidence(html: str, css: str) -> str:
     for d in decls:
         first = d.split(",")[0].strip().strip("'\"").strip()
         if not first or first.lower() in _GENERIC_FONT_TOKENS or first.lower().startswith("var("):
+            continue
+        if _is_icon_font(first):
             continue
         primaries.append(first)
     for name in list(dict.fromkeys(primaries))[:10]:
@@ -85,8 +93,8 @@ def _css_from_html(html: str, url: str, headers: dict) -> str:
             full_url = urljoin(url, css_url)
             css_resp = requests.get(full_url, headers=headers, timeout=8)
             css_content += "\n" + css_resp.text[:15000]
-        except:
-            pass
+        except Exception:
+            pass  # a dead stylesheet shouldn't kill the scrape
 
     return css_content
 
@@ -252,8 +260,6 @@ def build_brand(url: str, logo_path: str = None) -> dict:
         json.dump(brand, f, indent=2)
 
     print(f"\nBrand saved → {output_path}")
-    print(json.dumps(brand, indent=2))
-
     return brand
 
 
@@ -306,9 +312,9 @@ def _creative_direction(mp: dict) -> str:
             """
 
 
-#Convert brand JSON into brand guidelines prompt
 def brand_to_prompt(brand: dict) -> str:
-    """Convert brand JSON into brand guidelines string for Layer 4."""
+    """Convert brand JSON into the brand-guidelines string consumed by the
+    graphic generator (Layer 2)."""
 
     vi = brand.get("visual_identity", {})
     bp = brand.get("brand_personality", {})
@@ -340,7 +346,7 @@ def brand_to_prompt(brand: dict) -> str:
             - Body font: {fonts.get('body') or 'choose a clean readable Google Font'}
             - Google Fonts URL: {fonts.get('google_fonts_url') or 'choose appropriate Google Fonts'}
 
-            LOGO: embedded in the image above — place top left, max height 36px, embed as base64 data URI
+            LOGO: the attached image — place top left, max height 36px (mechanics are specified in the system prompt)
 {creative_direction}"""
 
 
