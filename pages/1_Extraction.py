@@ -14,7 +14,10 @@ st.caption("URL → brand JSON (visual identity) + brain JSON (company knowledge
 url = st.text_input("Website URL", placeholder="https://www.finbots.ai/")
 max_pages = st.slider("Pages to analyze (most relevant, not a raw crawl limit)", min_value=5, max_value=30, value=12, step=1)
 
-logo_file = st.file_uploader("Logo (optional — used for brand JSON)", type=["png", "jpg", "jpeg", "webp"])
+logo_file = st.file_uploader(
+    "Logo (optional — auto-fetched from the site; upload only to override)",
+    type=["png", "jpg", "jpeg", "webp"],
+)
 
 col_brand, col_brain = st.columns(2)
 
@@ -32,9 +35,12 @@ if extract_brand:
     else:
         logo_path = None
         if logo_file:
+            # Normalize whatever was uploaded to a real PNG — the pipeline
+            # hardcodes image/png, so mislabeled JPEG bytes would break it.
+            import io
+            from PIL import Image
             logo_path = str(ROOT / "logo.png")
-            with open(logo_path, "wb") as f:
-                f.write(logo_file.getbuffer())
+            Image.open(io.BytesIO(logo_file.getbuffer())).save(logo_path, format="PNG")
             st.caption(f"Logo saved → `{logo_path}`")
 
         with st.spinner("Scraping homepage and extracting brand identity..."):
@@ -53,6 +59,13 @@ if extract_brand:
 
             vi = brand.get("visual_identity", {})
             bp = brand.get("brand_personality", {})
+
+            if vi.get("logo_path"):
+                lc1, lc2 = st.columns([1, 5])
+                lc1.image(vi["logo_path"], width=100)
+                lc2.caption(f"Logo: `{vi['logo_path']}`")
+            else:
+                st.warning("No logo found on the site — upload one above and re-extract, or set a logo path on the Generation page.")
 
             c1, c2, c3 = st.columns(3)
             color_fields = [("Primary", "primary_color"), ("Secondary", "secondary_color"), ("Accent", "accent_color")]

@@ -233,13 +233,87 @@ Rules:
 
 
 # ─────────────────────────────────────────────
-# STEP 3: Build and save brand JSON
+# STEP 3: Fetch the logo (auto, with manual override)
+# ─────────────────────────────────────────────
+
+MAX_LOGO_BYTES = 5 * 1024 * 1024
+
+
+def _svg_to_png(svg_bytes: bytes, out_path: str) -> bool:
+    """Render an SVG logo to a transparent PNG via headless Chromium (Claude
+    image blocks and the graphic pipeline require raster PNG)."""
+    try:
+        import base64
+        from playwright.sync_api import sync_playwright
+
+        data_uri = "data:image/svg+xml;base64," + base64.standard_b64encode(svg_bytes).decode()
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=True)
+            page = browser.new_page(viewport={"width": 800, "height": 400})
+            page.set_content(f'<img id="logo" src="{data_uri}" style="max-height:200px">')
+            page.wait_for_timeout(300)
+            page.locator("#logo").screenshot(path=out_path, omit_background=True)
+            browser.close()
+        return True
+    except Exception as e:
+        print(f"SVG logo render failed: {e}")
+        return False
+
+
+def _raster_to_png(data: bytes, out_path: str) -> bool:
+    """Normalize any raster format (PNG/JPG/WebP/GIF) to a real PNG file —
+    the pipeline hardcodes image/png, so mislabeled bytes would break it.
+    Downscaled to a sane size: logos render at ~32px height, and the file is
+    base64-embedded into every model call and output HTML."""
+    try:
+        import io
+        from PIL import Image
+
+        img = Image.open(io.BytesIO(data))
+        img.thumbnail((1024, 256))  # in-place, keeps aspect ratio, never upscales
+        img.save(out_path, format="PNG")
+        return True
+    except Exception as e:
+        print(f"Logo image conversion failed: {e}")
+        return False
+
+
+def fetch_logo(logo_url: str, slug: str):
+    """Download the site's logo and save it as data/logo_<slug>.png.
+    Returns the saved path, or None on any failure (caller degrades to
+    manual upload)."""
+    print(f"Fetching logo from {logo_url}...")
+    out_path = str(DATA_DIR / f"logo_{slug}.png")
+
+    try:
+        headers = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"}
+        resp = requests.get(logo_url, headers=headers, timeout=10)
+        data = resp.content
+        if not data or len(data) > MAX_LOGO_BYTES:
+            print("Logo download empty or too large — skipping")
+            return None
+    except Exception as e:
+        print(f"Logo download failed: {e}")
+        return None
+
+    head = data[:300].lstrip().lower()
+    is_svg = "svg" in (resp.headers.get("content-type") or "") or head.startswith(b"<svg") or (head.startswith(b"<?xml") and b"<svg" in data[:2000].lower())
+
+    ok = _svg_to_png(data, out_path) if is_svg else _raster_to_png(data, out_path)
+    if ok and Path(out_path).exists():
+        print(f"Logo saved → {out_path}")
+        return out_path
+    return None
+
+
+# ─────────────────────────────────────────────
+# STEP 4: Build and save brand JSON
 # ─────────────────────────────────────────────
 
 def build_brand(url: str, logo_path: str = None) -> dict:
     """
-    Pipeline: URL → scrape CSS → extract brand → save brand JSON.
-    Pass logo_path to set local logo file.
+    Pipeline: URL → scrape CSS → extract brand → fetch logo → save brand JSON.
+    Pass logo_path to override the auto-fetched logo with a local file.
     """
 
     scraped = scrape_css(url)
@@ -249,12 +323,16 @@ def build_brand(url: str, logo_path: str = None) -> dict:
         print("Brand extraction failed")
         return {}
 
-    # Inject logo_path into nested structure
-    if brand.get("visual_identity"):
-        brand["visual_identity"]["logo_path"] = logo_path or None
-
     company_slug = brand.get("company_name", "company").lower().replace(" ", "_").replace(".", "").replace("/", "")
-    output_path  = DATA_DIR / f"brand_{company_slug}.json"
+
+    if brand.get("visual_identity"):
+        vi = brand["visual_identity"]
+        # Manual upload wins; otherwise auto-fetch the logo the extractor found
+        if not logo_path and vi.get("logo_url"):
+            logo_path = fetch_logo(vi["logo_url"], company_slug)
+        vi["logo_path"] = logo_path or None
+
+    output_path = DATA_DIR / f"brand_{company_slug}.json"
 
     with open(output_path, "w") as f:
         json.dump(brand, f, indent=2)

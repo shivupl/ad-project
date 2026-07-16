@@ -1,3 +1,6 @@
+import json
+from pathlib import Path
+
 import streamlit as st
 
 from layer2_generation.graphic_generator import run
@@ -29,7 +32,16 @@ with st.sidebar:
         format_func=lambda p: p.name,
         index=0 if brain_files else None,
     )
-    logo_path = st.text_input("Logo path", value=str(default_logo))
+
+    # Default to the selected brand's own (auto-fetched) logo when it exists
+    brand_logo = None
+    if brand_file:
+        try:
+            brand_logo = (json.load(open(brand_file)).get("visual_identity") or {}).get("logo_path")
+        except Exception:
+            pass
+    logo_default = brand_logo if brand_logo and Path(brand_logo).exists() else str(default_logo)
+    logo_path = st.text_input("Logo path", value=logo_default)
     generate = st.button("Generate", type="primary")
 
 if not brand_files or not brain_files:
