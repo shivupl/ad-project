@@ -1,6 +1,6 @@
 ---
 name: brand-canvas-design
-description: Create visually-led, art-directed marketing graphics as self-contained HTML/CSS files using a design-philosophy-first approach. Use this skill whenever generating a marketing graphic where visual impact matters more than information density — brand awareness posts, launch moments, lifestyle/consumer (D2C) brands, Instagram-first content, or any brief whose design notes call for "expressive," "atmospheric," "bold," or "visual-first" treatment. Also use it when a standard data-forward layout would feel generic for the brand's personality. The graphic must still carry exact brand colors, fonts, logo, and the exact marketing copy provided (headline, stat, CTA) — this skill makes them art, it never drops them.
+description: Create visually-led, art-directed marketing graphics as self-contained HTML/CSS files using a design-philosophy-first approach. Used automatically for brands whose marketing profile is emotional, minimal, D2C, or prosumer — where a data-forward layout would feel generic. Carries exact brand colors, fonts, logo, and copy; makes them art, never drops them.
 ---
 
 These are instructions for creating branded marketing graphics that feel like art objects rather than templates — while never sacrificing the brand system or the marketing message. Output is always a single self-contained HTML file at an exact canvas size, ready for screenshot rendering.
@@ -29,7 +29,16 @@ Unlike pure art, this philosophy is not free invention. It must be derived from 
 
 **Write 2-4 paragraphs** covering how the philosophy manifests through space, color, scale, rhythm, and composition — using the brand's actual palette and typography as the raw material. Each design aspect mentioned once; no redundancy.
 
-**Emphasize craftsmanship**: the final graphic must look meticulously crafted, labored over with care, the product of someone at the absolute top of their field. Not decorated — designed.
+**End the philosophy with three binding commitments** the code MUST visibly honor — this is what makes the manifesto real instead of decorative:
+
+```
+COMMITMENTS:
+1. Gesture: <the one dominant visual gesture, in one sentence>
+2. Palette logic: <which brand color dominates, which accents, and why>
+3. Silence: <where the negative space lives on this canvas>
+```
+
+If the finished HTML does not deliver all three, it has failed the brief.
 
 ### The subtle conceptual thread
 
@@ -59,10 +68,22 @@ These override artistic freedom. Every graphic must:
 This is where this skill departs from data-forward layout:
 
 - **One dominant visual gesture** carries the composition — a monumental typographic element, a commanding color field, a sculptural arrangement of form. Everything else is subordinate.
-- **Text as visual architecture**: the headline or hero stat is not placed *on* the design — it *is* the design. Scale it fearlessly. Let context set the register: a bold fintech stat can be monumental and aggressive; a luxury brand line can be whisper-thin and surrounded by silence.
+- **Text as visual architecture — with owned geometry**: the headline or hero stat is not placed *on* the design — it *is* the design. Scale it fearlessly, but monumental type must OWN its footprint: before committing to a font size, reason about the rendered width of the actual words at that size, decide deliberately whether the line breaks (and where), and reserve that exact space in the layout. A hero that wraps by accident and lands on the copy below it is the single most common failure of this style. When in doubt: one line, `white-space: nowrap`, sized to fit with margin to spare — or a deliberate multi-line composition where every break is chosen.
 - **Secondary copy (metrics, subtext, CTA) recedes**: small, precise, positioned like clinical annotations or quiet labels — present and legible, never competing with the gesture.
+- **The silence quota**: at least a third of the canvas stays quiet — no text, no competing marks, only atmosphere. Visual-first design dies the moment every region is filled. The negative space is a design element; place it deliberately (that is commitment #3).
 - **Atmosphere over flatness**: build depth with layered gradients, geometric structure, pattern, translucency, and grain — always derived from the brand palette. A flat solid background is a failure of imagination.
 - **Repetition and system**: repeating marks, ruled lines, systematic patterns reward sustained viewing and signal painstaking craft. Borrow the visual language of systematic observation — as if this graphic were a diagram from an imaginary discipline studying the brand's promise.
+
+### Craft levers (use these, not vibes)
+
+Craftsmanship is executed through specific decisions, not effort adjectives:
+
+- **Spacing rhythm**: every margin, gap, and padding sits on one modular scale (e.g. 8 → 16 → 24 → 40 → 64). No arbitrary values.
+- **Optical alignment**: align to the glyphs, not the boxes — large display type needs negative left margin to sit optically flush; punctuation hangs.
+- **Two families maximum**, three sizes of display hierarchy maximum. Weight and spacing do the work between them.
+- **Letter-spacing regimes**: tight (-0.02 to -0.04em) on monumental display; generous (+0.08 to +0.2em) on small uppercase labels; body untouched.
+- **Numerals**: hero stats use the display face; supporting figures use `font-variant-numeric: tabular-nums` so digits align like instrumentation.
+- **One accent moment**: the brand accent color appears where the eye must land — and almost nowhere else.
 
 ### Craftsmanship standard
 
@@ -74,6 +95,6 @@ To achieve human-crafted quality: make it appear as though someone at the top of
 
 The user ALREADY said: "It isn't perfect enough. It must be pristine — a masterpiece of craftsmanship."
 
-Take a second pass over the completed HTML. Do NOT add more graphics or new elements. Instead refine what exists: tighten optical spacing, calibrate color relationships, perfect the typographic scale, verify nothing overlaps and every margin breathes. If the instinct is to draw a new shape, STOP and ask instead: "How can I make what's already here more of a piece of art?"
+Take a second pass over the completed HTML. Do NOT add more graphics or new elements. Instead refine what exists: tighten optical spacing, calibrate color relationships, perfect the typographic scale, verify nothing overlaps and every margin breathes. Re-read your three COMMITMENTS and confirm each is visibly delivered. If the instinct is to draw a new shape, STOP and ask instead: "How can I make what's already here more of a piece of art?"
 
 Verify against the constraints one final time: exact canvas size, exact hex values, all copy verbatim, logo placed correctly, fully self-contained. Then output the single HTML file.

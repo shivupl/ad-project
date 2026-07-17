@@ -14,7 +14,7 @@ from layer2_generation.review import (
     CANVAS_HEIGHT, CANVAS_WIDTH, find_defects, html_to_png, repair_html, review_and_enhance,
 )
 from layer2_generation.strategy_agent import brief_to_caption, brief_to_post_content, generate_brief, validate_brief
-from paths import DATA_DIR, FRONTEND_DESIGN_SKILL, ROOT
+from paths import BRAND_CANVAS_SKILL, DATA_DIR, FRONTEND_DESIGN_SKILL, ROOT
 
 LOGO_PLACEHOLDER = "__LOGO_BASE64__"
 # Allowance on top of the brief's own copy for small labels (company name, url,
@@ -25,6 +25,20 @@ EXTRA_WORDS_ALLOWANCE = 25
 def load_logo_b64(logo_path: str) -> str:
     with open(logo_path, "rb") as f:
         return base64.b64encode(f.read()).decode()
+
+
+def _choose_design_skill(brand: dict):
+    """Route the design skill by marketing profile: the visually-led canvas
+    skill for emotional/minimal/D2C/prosumer brands, the data-forward skill
+    for rational/dense B2B (its home game — it tied for best on Finbots in a
+    4-way bake-off). Legacy brands without a profile get the data-forward
+    default."""
+    mp = brand.get("marketing_profile") or {}
+    if (mp.get("persuasion_mode") == "emotional"
+            or mp.get("content_density") == "minimal"
+            or mp.get("business_model") in ("d2c_consumer", "prosumer_creative")):
+        return BRAND_CANVAS_SKILL
+    return FRONTEND_DESIGN_SKILL
 
 
 # ─────────────────────────────────────────────
@@ -134,7 +148,8 @@ def validate_graphic(html: str, brief: dict) -> list:
 # STEP 3: Orchestration — junior → senior → defect gate
 # ─────────────────────────────────────────────
 
-def generate_graphic(brand_prompt: str, post_content: str, logo_b64: str, brief: dict, png_path: str = None) -> tuple:
+def generate_graphic(brand_prompt: str, post_content: str, logo_b64: str, brief: dict,
+                     png_path: str = None, skill_path=None) -> tuple:
     """Junior → senior pipeline:
       1. JUNIOR drafts the graphic; text checks regenerate once if broken.
       2. SENIOR DESIGNER reviews the rendered screenshot + source: fixes
@@ -148,12 +163,13 @@ def generate_graphic(brand_prompt: str, post_content: str, logo_b64: str, brief:
         return h.replace(LOGO_PLACEHOLDER, logo_b64)
 
     # ── Stage 1: junior draft ──
-    html = generate_graphic_html(brand_prompt, post_content, logo_b64)
+    html = generate_graphic_html(brand_prompt, post_content, logo_b64, skill_path=skill_path)
     issues = validate_graphic(html, brief)
     if issues:
         print(f"Junior draft failed text checks, regenerating: {issues}")
         html = generate_graphic_html(brand_prompt, post_content, logo_b64,
-                                     correction="\n".join(f"- {i}" for i in issues))
+                                     correction="\n".join(f"- {i}" for i in issues),
+                                     skill_path=skill_path)
         issues = validate_graphic(html, brief)
         if issues:
             html_final = substitute(html)
@@ -230,7 +246,11 @@ def run(
     with open(caption_path, "w") as f:
         f.write(caption)
 
-    html, warnings, critique = generate_graphic(brand_prompt, post_content, logo_b64, brief, png_path=png_path)
+    skill_path = _choose_design_skill(brand)
+    print(f"Design skill: {skill_path.name}")
+
+    html, warnings, critique = generate_graphic(brand_prompt, post_content, logo_b64, brief,
+                                                png_path=png_path, skill_path=skill_path)
     warnings = validate_brief(brief) + warnings
     with open(html_path, "w") as f:
         f.write(html)
@@ -242,6 +262,7 @@ def run(
         "html": html,
         "warnings": warnings,
         "critique": critique,
+        "design_skill": skill_path.name,
         "caption_path": caption_path,
         "html_path": html_path,
         "brief_path": brief_path,

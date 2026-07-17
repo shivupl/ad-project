@@ -67,6 +67,8 @@ if generate:
             st.stop()
 
     st.success("Done!")
+    if result.get("design_skill"):
+        st.caption(f"Design skill: `{result['design_skill']}` (routed by marketing profile)")
 
     if result.get("critique"):
         with st.expander("🎨 Senior designer review", expanded=False):
