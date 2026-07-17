@@ -12,7 +12,7 @@ import shutil
 import llm
 from layer1_extraction.extract_brand import brand_to_prompt
 from layer2_generation.review import (
-    CANVAS_HEIGHT, CANVAS_WIDTH, find_defects, html_to_png, repair_html, review_and_enhance,
+    CANVAS_HEIGHT, CANVAS_WIDTH, find_defects, html_to_png, repair_html,
 )
 from layer2_generation.strategy_agent import brief_to_caption, brief_to_post_content, generate_brief, validate_brief
 from paths import BRAND_CANVAS_SKILL, DATA_DIR, FRONTEND_DESIGN_SKILL, ROOT
@@ -146,22 +146,22 @@ def validate_graphic(html: str, brief: dict) -> list:
 
 
 # ─────────────────────────────────────────────
-# STEP 3: Orchestration — junior → senior → defect gate
+# STEP 3: Orchestration — draft → defect gate
 # ─────────────────────────────────────────────
 
 def generate_graphic(brand_prompt: str, post_content: str, logo_b64: str, brief: dict,
                      png_path: str = None, skill_path=None,
                      draft_html_path: str = None, draft_png_path: str = None) -> tuple:
-    """Junior → senior pipeline:
-      1. JUNIOR drafts the graphic; text checks regenerate once if broken.
-      2. SENIOR DESIGNER reviews the rendered screenshot + source: fixes
-         defects, critiques the craft, returns an enhanced version of the same
-         design. Discarded if it violates the text checks.
-      3. Final defect gate: vision inspection of the shipped render; remaining
-         overlap/clipping is repaired surgically.
-    When draft paths are given, the junior's pre-review version is saved there
-    so every run has a before/after pair (identical when review was skipped).
-    Returns (final_html_with_logo, warnings, critique)."""
+    """Draft → defect-gate pipeline:
+      1. Draft the graphic; text checks regenerate once if broken.
+      2. Defect gate: vision inspection of the rendered PNG; overlap/clipping
+         is repaired surgically without touching the design.
+    (The senior-designer enhance stage was removed — side-by-side testing
+    showed it made outputs worse. See review.review_and_enhance to restore.)
+    When draft paths are given, the pre-repair version is saved there so every
+    run has a before/after pair (identical when no repair was needed).
+    Returns (final_html_with_logo, warnings, critique) — critique is always
+    None now, kept for interface stability."""
 
     def substitute(h):
         return h.replace(LOGO_PLACEHOLDER, logo_b64)
@@ -195,18 +195,7 @@ def generate_graphic(brand_prompt: str, post_content: str, logo_b64: str, brief:
 
     snapshot_draft(html)
 
-    # ── Stage 2: senior designer review (fix + critique + enhance) ──
-    enhanced, critique = review_and_enhance(html, png_path, brief, brand_prompt)
-    if enhanced != html:
-        enhanced_issues = validate_graphic(enhanced, brief)
-        if enhanced_issues:
-            print(f"Senior enhancement discarded (failed text checks): {enhanced_issues}")
-            critique = (critique or "") + " [enhancement discarded — it violated copy/canvas constraints; junior version kept]"
-        else:
-            html = enhanced
-    html_to_png(substitute(html), png_path)
-
-    # ── Stage 3: final defect gate + surgical repair ──
+    # ── Stage 2: defect gate + surgical repair ──
     defects = find_defects(png_path)
     if defects:
         print(f"Final render has defects, repairing in place: {defects}")
@@ -217,7 +206,7 @@ def generate_graphic(brand_prompt: str, post_content: str, logo_b64: str, brief:
         defects = find_defects(png_path)
 
     issues = [f"The rendered image shows: {d}" for d in defects]
-    return substitute(html), issues, critique
+    return substitute(html), issues, None
 
 
 # ─────────────────────────────────────────────
@@ -236,7 +225,7 @@ def run(
     png_path: str = None,
 ) -> dict:
     """Full pipeline: topic → strategy brief → caption + HTML graphic + PNG.
-    Also saves the pre-senior-review draft next to the final output
+    Also saves the pre-repair draft next to the final output
     (*_draft.html / *_draft.png) so every run has a before/after pair."""
     caption_path = caption_path or str(DATA_DIR / "caption.txt")
     html_path = html_path or str(DATA_DIR / "output.html")

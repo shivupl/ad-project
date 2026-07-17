@@ -92,10 +92,10 @@ if generate:
                 st.download_button("Download PNG (ready to post)", f, file_name="graphic.png", mime="image/png")
             st.caption(f"PNG: `{result['png_path']}` · HTML: `{result['html_path']}`")
             if result.get("draft_png_path"):
-                with st.expander("Before / after senior review"):
+                with st.expander("Before / after defect repair"):
                     col_before, col_after = st.columns(2)
                     with col_before:
-                        st.markdown("**Before** (junior draft)")
+                        st.markdown("**Before** (initial draft)")
                         st.image(result["draft_png_path"])
                         st.caption(f"`{result['draft_png_path']}`")
                     with col_after:
