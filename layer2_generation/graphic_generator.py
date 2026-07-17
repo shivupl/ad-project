@@ -7,6 +7,7 @@ import html as html_lib
 import json
 import os
 import re
+import shutil
 
 import llm
 from layer1_extraction.extract_brand import brand_to_prompt
@@ -149,7 +150,8 @@ def validate_graphic(html: str, brief: dict) -> list:
 # ─────────────────────────────────────────────
 
 def generate_graphic(brand_prompt: str, post_content: str, logo_b64: str, brief: dict,
-                     png_path: str = None, skill_path=None) -> tuple:
+                     png_path: str = None, skill_path=None,
+                     draft_html_path: str = None, draft_png_path: str = None) -> tuple:
     """Junior → senior pipeline:
       1. JUNIOR drafts the graphic; text checks regenerate once if broken.
       2. SENIOR DESIGNER reviews the rendered screenshot + source: fixes
@@ -157,10 +159,19 @@ def generate_graphic(brand_prompt: str, post_content: str, logo_b64: str, brief:
          design. Discarded if it violates the text checks.
       3. Final defect gate: vision inspection of the shipped render; remaining
          overlap/clipping is repaired surgically.
+    When draft paths are given, the junior's pre-review version is saved there
+    so every run has a before/after pair (identical when review was skipped).
     Returns (final_html_with_logo, warnings, critique)."""
 
     def substitute(h):
         return h.replace(LOGO_PLACEHOLDER, logo_b64)
+
+    def snapshot_draft(h):
+        if draft_html_path:
+            with open(draft_html_path, "w") as f:
+                f.write(substitute(h))
+        if draft_png_path and png_path and os.path.exists(png_path):
+            shutil.copyfile(png_path, draft_png_path)
 
     # ── Stage 1: junior draft ──
     html = generate_graphic_html(brand_prompt, post_content, logo_b64, skill_path=skill_path)
@@ -175,10 +186,14 @@ def generate_graphic(brand_prompt: str, post_content: str, logo_b64: str, brief:
             html_final = substitute(html)
             if png_path:
                 html_to_png(html_final, png_path)
+            snapshot_draft(html)
             return html_final, issues, None
 
     if not png_path or not html_to_png(substitute(html), png_path):
+        snapshot_draft(html)
         return substitute(html), [], None
+
+    snapshot_draft(html)
 
     # ── Stage 2: senior designer review (fix + critique + enhance) ──
     enhanced, critique = review_and_enhance(html, png_path, brief, brand_prompt)
@@ -220,11 +235,17 @@ def run(
     brief_path: str = None,
     png_path: str = None,
 ) -> dict:
-    """Full pipeline: topic → strategy brief → caption + HTML graphic + PNG."""
+    """Full pipeline: topic → strategy brief → caption + HTML graphic + PNG.
+    Also saves the pre-senior-review draft next to the final output
+    (*_draft.html / *_draft.png) so every run has a before/after pair."""
     caption_path = caption_path or str(DATA_DIR / "caption.txt")
     html_path = html_path or str(DATA_DIR / "output.html")
     brief_path = brief_path or str(DATA_DIR / "brief.json")
     png_path = png_path or str(DATA_DIR / "output.png")
+    draft_html_path = str(Path(html_path).with_name(Path(html_path).stem + "_draft.html"))
+    draft_png_path = str(Path(png_path).with_name(Path(png_path).stem + "_draft.png"))
+    for stale in (draft_html_path, draft_png_path):
+        Path(stale).unlink(missing_ok=True)
 
     with open(brand_path) as f:
         brand = json.load(f)
@@ -250,7 +271,9 @@ def run(
     print(f"Design skill: {skill_path.name}")
 
     html, warnings, critique = generate_graphic(brand_prompt, post_content, logo_b64, brief,
-                                                png_path=png_path, skill_path=skill_path)
+                                                png_path=png_path, skill_path=skill_path,
+                                                draft_html_path=draft_html_path,
+                                                draft_png_path=draft_png_path)
     warnings = validate_brief(brief) + warnings
     with open(html_path, "w") as f:
         f.write(html)
@@ -267,6 +290,8 @@ def run(
         "html_path": html_path,
         "brief_path": brief_path,
         "png_path": png_path if os.path.exists(png_path) else None,
+        "draft_html_path": draft_html_path if os.path.exists(draft_html_path) else None,
+        "draft_png_path": draft_png_path if os.path.exists(draft_png_path) else None,
     }
 
 
@@ -291,3 +316,4 @@ if __name__ == "__main__":
     for w in result["warnings"]:
         print(f"warning: {w}")
     print(f"\nDone — PNG: {result['png_path']}  HTML: {result['html_path']}")
+    print(f"Pre-review draft — PNG: {result['draft_png_path']}  HTML: {result['draft_html_path']}")

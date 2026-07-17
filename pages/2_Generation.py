@@ -91,6 +91,17 @@ if generate:
             with open(result["png_path"], "rb") as f:
                 st.download_button("Download PNG (ready to post)", f, file_name="graphic.png", mime="image/png")
             st.caption(f"PNG: `{result['png_path']}` · HTML: `{result['html_path']}`")
+            if result.get("draft_png_path"):
+                with st.expander("Before / after senior review"):
+                    col_before, col_after = st.columns(2)
+                    with col_before:
+                        st.markdown("**Before** (junior draft)")
+                        st.image(result["draft_png_path"])
+                        st.caption(f"`{result['draft_png_path']}`")
+                    with col_after:
+                        st.markdown("**After** (shipped)")
+                        st.image(result["png_path"])
+                        st.caption(f"`{result['png_path']}`")
             with st.expander("HTML preview"):
                 st.components.v1.html(result["html"], height=660, scrolling=True)
         else:
