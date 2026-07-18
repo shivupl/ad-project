@@ -227,7 +227,8 @@ Rules:
 def run_brain_extraction(content) -> dict:
     """One extraction call against the brain schema. `content` is a plain
     string, or a list of content blocks (for document input)."""
-    return llm.complete_json(content, max_tokens=8000) or {}
+    # 16k: fact-dense sites (Stripe-scale) overflow 8k and truncate the JSON
+    return llm.complete_json(content, max_tokens=16000) or {}
 
 
 def extract_brain(crawled: dict) -> dict:
