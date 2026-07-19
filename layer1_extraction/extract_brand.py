@@ -372,10 +372,11 @@ def _creative_direction(mp: dict) -> str:
             Generous whitespace. NO dashboard aesthetics: no grid backgrounds, no stacked stat
             panels, no data-tile layouts. At most ONE number on the entire canvas. Warm, human,
             imagery-like treatment over technical precision."""
-    elif mode == "rational" and density == "dense":
-        direction = """Data-forward composition is appropriate here: a stat hero, supporting metric
-            chips, precise technical feel. Confidence through specificity."""
     else:
+        # Rational brands always get the balanced/clean direction. The old
+        # "rational + dense -> data-forward dashboard" branch reliably produced
+        # cramped, cluttered graphics with no upside — the metric cap is fixed
+        # at 2 regardless of density, so "dense" added clutter, not information.
         direction = """One clear hero idea with at most 2 supporting proof elements. Balanced —
             neither a data dashboard nor a bare poster."""
 
