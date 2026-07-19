@@ -5,21 +5,22 @@ Company website URL + a topic → ready-to-post LinkedIn caption + branded graph
 ## Architecture (two layers, deliberately separate)
 
 **Layer 1 — Extraction** (`layer1_extraction/`): understand the company once, reuse for many posts.
-- `extract_brand.py` — homepage scrape → `data/brand_<slug>.json`: visual identity (colors, fonts via a pre-truncation font-evidence pass, logo auto-fetched and normalized to PNG) + `marketing_profile` (business model, rational-vs-emotional persuasion, content density, CTA style). The profile drives everything downstream.
+- `extract_brand.py` — homepage scrape → `data/brand_<slug>.json`: visual identity (colors, fonts via a pre-truncation font-evidence pass, logo auto-fetched and normalized to PNG) + `marketing_profile` (business model, rational-vs-emotional persuasion, content density [`minimal | standard`], CTA style). The profile drives everything downstream.
 - `extract_brain.py` — Firecrawl `map()` → heuristic junk filter → Haiku relevance-ranks pages → `batch_scrape` top N → one extraction call → `data/brain_<slug>.json` (products, metrics, quotes, pricing, pain points, promises...). `brain_to_context()` does topic-aware selection across all pools in ONE Haiku call.
 - `enrich_brain.py` — PDFs/decks/notes (PDF sent natively as document blocks) extracted against the same schema, then LLM-merged into the existing brain with semantic dedupe. Merge failure never destroys the existing brain.
 
 **Layer 2 — Generation** (`layer2_generation/`):
 - `strategy_agent.py` — topic + brain + marketing profile → structured brief (caption + graphic copy with hard word limits).
-- `graphic_generator.py` — the staged pipeline: **junior draft** (design skill routed by marketing profile) → text validation (exact copy, canvas size, visible-word budget; regenerate once on failure) → **senior designer review** (sees the rendered screenshot + source; fixes, critiques, enhances; discarded if it violates text checks) → **final defect gate** (vision inspection of the PNG for overlap/clipping) → surgical repair if needed.
-- `review.py` — "the generator writes HTML blind; this module is its eyes": Playwright screenshot, senior review, defect detection, repair.
+- `graphic_generator.py` — the staged pipeline: **junior draft** (design skill routed by marketing profile) → text validation (exact copy, canvas size, visible-word budget; regenerate once on failure) → **defect gate** (vision inspection of the rendered PNG for overlap/clipping) → surgical repair if needed. Every run also saves a pre-repair draft (`*_draft.html`/`*_draft.png`) beside the final output. (A senior-designer *enhance* stage was removed — side-by-side testing showed it worsened outputs by adding overlaps; the dormant code stays in `review.review_and_enhance` for easy restoration.)
+- `review.py` — "the generator writes HTML blind; this module is its eyes": Playwright screenshot, defect detection, repair. (`review_and_enhance`, the old senior-review pass, is retained but unused.)
 
 **Shared core**: `llm.py` — the ONLY place API clients and model IDs live (`MODEL_HEAVY` / `MODEL_LIGHT`). Change a model here, nowhere else. All fence-strip/JSON-parse/retry logic is `llm.complete()` / `llm.complete_json()`.
 
 **Skills** (`skills/*.md`) — the prompt tuning surface, loaded as system prompts:
-- `frontend_design_skill.md` — data-forward graphics (rational/dense B2B brands)
-- `brand_canvas_skill.md` — art-directed, philosophy-first graphics (emotional/minimal/D2C/prosumer brands)
+- `marketing_graphic_skill.md` — distinctive, production-grade graphics for rational/B2B brands (the restored original `SKILL2`; won a multi-brand Finbots/Ramp/Stripe bake-off over the old data-forward skill).
+- `brand_canvas_skill.md` — art-directed, philosophy-first graphics (emotional/minimal/D2C/prosumer brands).
 - Routing between them is `_choose_design_skill()` in graphic_generator, keyed off the brand's `marketing_profile`.
+- `frontend_design_skill.md` — the previous data-forward B2B skill, now retired from routing (kept only as a defensive fallback in `_build_system_prompt`).
 - `linkedin_strategy_skill.md` — the strategist persona (profile-adaptive, 6 post types)
 - `senior_designer_skill.md` — the review agent persona
 
@@ -52,11 +53,10 @@ python layer2_generation/review.py output.html   # render + defect-check any gra
 
 - `main` is canonical. `main-legacy` preserves the pre-rewrite June version. `ig_strat_test` and `worktree-layer2-enhance` hold unmerged Instagram-routing experiments (unique work — don't delete casually); other branches are redundant with main.
 - Session workflow: build on a temp branch in a worktree, verify live, commit, `git merge --ff-only` into the target branch. Keep merges fast-forward.
-- **No remote exists yet** — everything lives on this machine.
+- **Remote**: `origin` → github.com/shivupl/ad-project. Local `main` is canonical; push to the remote only when explicitly asked — never auto-push to remote `main`.
 
 ## Known gaps / roadmap
 
-- No git remote (top priority).
 - Inline-SVG logos (e.g. Hims) aren't auto-fetched — only `logo_url` images are; the SVG→PNG converter exists in `extract_brand.py`, it just isn't wired to inline page SVGs.
 - Instagram/platform routing designed but unmerged (see `ig_strat_test` branch for the strategy skill).
 - Very large multi-product sites (Adobe-scale) exceed the `map(limit=100)` / `max_pages` defaults — the brain samples rather than covers them.
