@@ -196,7 +196,7 @@ Return ONLY a valid JSON object with this exact nested structure, no explanation
     "business_model": "b2b | d2c_consumer | prosumer_creative | mixed",
     "persuasion_mode": "rational | emotional | mixed",
     "evidence_types": ["2-5 items, most prominent first, from: metrics, case_studies, social_proof, credentials, price_value, transformation, lifestyle, aspiration, convenience"],
-    "content_density": "minimal | balanced | dense",
+    "content_density": "minimal | standard",
     "cta_style": "book_demo | start_trial | shop_now | subscribe | learn_more",
     "example_ctas": ["verbatim CTA button texts from the homepage, up to 3"],
     "reasoning": "one sentence citing the homepage signals behind this classification"
@@ -223,7 +223,7 @@ Rules:
   - self-serve "start free" / "sign up" aimed at individual creators or users → "prosumer_creative" or "mixed"
   - persuasion_mode: metric-led copy (numbers, ROI, accuracy claims) → "rational"; feeling-led copy (identity, transformation, convenience, second-person "you") → "emotional"; both prominent → "mixed"
   - evidence_types: what the homepage actually leans on to convince (stats vs testimonials vs price vs badges vs lifestyle imagery vs aspiration)
-  - content_density: text/feature/data-heavy homepage → "dense"; imagery-led with sparse copy → "minimal"; else "balanced"
+  - content_density: imagery-led homepage with sparse copy → "minimal"; everything else → "standard"
   - example_ctas: copy the literal button/link texts, do not paraphrase
 - If a value cannot be found return null
 - Return ONLY the JSON, nothing else
