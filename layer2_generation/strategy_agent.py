@@ -125,6 +125,33 @@ def brief_to_caption(brief: dict) -> str:
     return f"{caption.get('hook', '')}\n\n{caption.get('body', '')}\n\n{caption.get('cta', '')}"
 
 
+def brief_to_summary(brief: dict) -> str:
+    """Readable, theme-first framing of a brief for the review gate (markdown)."""
+    g = brief.get("graphic") or {}
+    c = brief.get("caption") or {}
+    dash = "\u2014"
+    dot = "\u00b7"
+    post_type = (brief.get("post_type") or "").replace("_", " ").title() or dash
+    metrics = g.get("metrics") or []
+    hero = g.get("headline") or dash
+    stat_suffix = f"  {dot}  _{g.get('stat_hero')}_" if g.get("stat_hero") else ""
+    lines = [
+        f"**Post type:** {post_type}",
+        f"**Hero message:** {hero}" + stat_suffix,
+    ]
+    if g.get("contrast_line"):
+        lines.append(f"**Contrast:** {g['contrast_line']}")
+    if g.get("subtext"):
+        lines.append(f"**Supporting:** {g['subtext']}")
+    if metrics:
+        sep = f" {dot} "
+        lines.append("**Proof:** " + sep.join(str(m) for m in metrics[:MAX_GRAPHIC_METRICS]))
+    lines.append(f"**CTA:** {g.get('cta') or dash}")
+    if c.get("hook"):
+        lines.append(f"**Caption hook:** {c['hook']}")
+    return "\n\n".join(lines)
+
+
 def brief_to_post_content(brief: dict, logo_b64: str) -> str:
     """Converts the graphic section into the prompt string for graphic generation.
     Metrics are hard-capped in code — richer brains produce more material, and
