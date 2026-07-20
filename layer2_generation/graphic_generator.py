@@ -212,20 +212,13 @@ def generate_graphic(brand_prompt: str, post_content: str, logo_b64: str, brief:
 # STEP 4: Full pipeline entry point
 # ─────────────────────────────────────────────
 
-def run(
-    topic: str,
-    brand_path: str,
-    brain_path: str,
-    logo_path: str,
-    product_name: str = None,
-    caption_path: str = None,
-    html_path: str = None,
-    brief_path: str = None,
-    png_path: str = None,
-) -> dict:
-    """Full pipeline: topic → strategy brief → caption + HTML graphic + PNG.
-    Also saves the pre-repair draft next to the final output
-    (*_draft.html / *_draft.png) so every run has a before/after pair."""
+def render_from_brief(brief: dict, brand: dict, logo_path: str, *,
+                      product_name: str = None, caption_path: str = None,
+                      html_path: str = None, brief_path: str = None,
+                      png_path: str = None) -> dict:
+    """Render a (possibly user-edited) brief into caption + HTML graphic + PNG.
+    The second half of the pipeline, split from run() so a human review step
+    can sit between planning (generate_brief) and rendering."""
     caption_path = caption_path or str(DATA_DIR / "caption.txt")
     html_path = html_path or str(DATA_DIR / "output.html")
     brief_path = brief_path or str(DATA_DIR / "brief.json")
@@ -235,17 +228,8 @@ def run(
     for stale in (draft_html_path, draft_png_path):
         Path(stale).unlink(missing_ok=True)
 
-    with open(brand_path) as f:
-        brand = json.load(f)
-    with open(brain_path) as f:
-        brain = json.load(f)
-
     logo_b64 = load_logo_b64(logo_path)
     brand_prompt = brand_to_prompt(brand)
-
-    brief = generate_brief(topic, brain, brand=brand, product_name=product_name)
-    if not brief:
-        raise RuntimeError("Strategy agent failed — no brief generated")
 
     caption = brief_to_caption(brief)
     post_content = brief_to_post_content(brief, LOGO_PLACEHOLDER)
@@ -282,6 +266,26 @@ def run(
         "draft_png_path": draft_png_path if os.path.exists(draft_png_path) else None,
     }
 
+
+def run(topic: str, brand_path: str, brain_path: str, logo_path: str,
+        product_name: str = None, caption_path: str = None, html_path: str = None,
+        brief_path: str = None, png_path: str = None) -> dict:
+    """Full non-interactive pipeline: topic -> brief -> caption + graphic + PNG.
+    A thin wrapper: plan the brief, then render it. The interactive two-step
+    flow (human review between) lives in the Streamlit page and calls
+    generate_brief / render_from_brief directly."""
+    with open(brand_path) as f:
+        brand = json.load(f)
+    with open(brain_path) as f:
+        brain = json.load(f)
+
+    brief = generate_brief(topic, brain, brand=brand, product_name=product_name)
+    if not brief:
+        raise RuntimeError("Strategy agent failed — no brief generated")
+
+    return render_from_brief(brief, brand, logo_path, product_name=product_name,
+                             caption_path=caption_path, html_path=html_path,
+                             brief_path=brief_path, png_path=png_path)
 
 # ─────────────────────────────────────────────
 # RUN
