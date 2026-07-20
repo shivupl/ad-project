@@ -73,6 +73,52 @@ def validate_brief(brief: dict) -> list:
     return warnings
 
 
+def fit_brief_copy(brief: dict) -> tuple:
+    """Light 'conform to fit' pass for user-edited copy. Caps metric COUNT
+    deterministically; trims only over-limit text fields via one constrained
+    LLM call that preserves wording. Returns (brief, changes). Never raises —
+    on LLM failure the over-limit text is left unchanged (the defect gate still
+    catches visual overflow later)."""
+    graphic = dict(brief.get("graphic") or {})
+    changes = []
+
+    metrics = list(graphic.get("metrics") or [])
+    if len(metrics) > MAX_GRAPHIC_METRICS:
+        changes.append(f"metrics: kept first {MAX_GRAPHIC_METRICS} of {len(metrics)}")
+        graphic["metrics"] = metrics[:MAX_GRAPHIC_METRICS]
+
+    over = {}
+    for field, limit in GRAPHIC_WORD_LIMITS.items():
+        val = (graphic.get(field) or "").strip()
+        if val and len(val.split()) > limit:
+            over[field] = limit
+
+    if over:
+        payload = {f: {"text": graphic.get(f, ""), "max_words": lim} for f, lim in over.items()}
+        prompt = (
+            "Shorten each field's text to at most max_words words WITHOUT changing "
+            "its meaning, angle, or key numbers — trim filler only and keep the "
+            "user's wording as much as possible. Return ONLY a JSON object mapping "
+            "each field name to its shortened string.\n\n" + json.dumps(payload, indent=2)
+        )
+        try:
+            trimmed = llm.complete_json(prompt, max_tokens=400) or {}
+        except Exception as e:
+            print(f"fit_brief_copy: trim failed, keeping copy as-is ({e})")
+            trimmed = {}
+        for f in over:
+            new = (trimmed.get(f) or "").strip()
+            if new and new != graphic.get(f):
+                changes.append(f'{f}: "{graphic[f]}" → "{new}"')
+                graphic[f] = new
+
+    if not changes:
+        return brief, []
+    out = dict(brief)
+    out["graphic"] = graphic
+    return out, changes
+
+
 def brief_to_caption(brief: dict) -> str:
     """Converts the caption section into plain text ready to paste into LinkedIn."""
     caption = brief.get("caption", {})
