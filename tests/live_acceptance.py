@@ -32,7 +32,15 @@ CASES = [
 
 fails = []
 for name, bf, brf, logo, topic in CASES:
-    brand = json.load(open(DATA / bf)); brain = json.load(open(DATA / brf))
+    try:
+        with open(DATA / bf) as f:
+            brand = json.load(f)
+        with open(DATA / brf) as f:
+            brain = json.load(f)
+    except Exception as e:
+        print(f"{name}: LOAD FAILED {e}")
+        fails.extend([f"{name}_1", f"{name}_2"])
+        continue
     for i in (1, 2):
         tag = f"{name}_{i}"
         try:
