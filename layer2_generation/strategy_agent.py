@@ -14,13 +14,14 @@ STRATEGY_SYSTEM_PROMPT = LINKEDIN_STRATEGY_SKILL.read_text()
 DEFAULT_PROFILE_LINE = "MARKETING PROFILE: Not provided — default to a professional, metric-driven B2B register."
 
 
-def generate_brief(topic: str, brain: dict, brand: dict = None, product_name: str = None) -> dict:
+def generate_brief(topic: str, brain: dict, brand: dict = None,
+                   product_name: str = None, steer: str = None) -> dict:
     """Topic + brain JSON (+ optional brand JSON for its marketing profile) →
-    structured post brief with separate 'caption' (post text) and 'graphic'
-    (image copy) sections."""
+    structured post brief. `steer` (optional) nudges the idea in a direction."""
 
     brain_context = brain_to_context(brain, product_name=product_name, topic=topic)
     profile_block = (marketing_profile_to_context(brand) if brand else "") or DEFAULT_PROFILE_LINE
+    steer_block = f"\nADDITIONAL DIRECTION FROM THE USER (steer the idea accordingly):\n{steer}\n" if steer else ""
 
     user_message = f"""
 COMPANY KNOWLEDGE:
@@ -30,7 +31,7 @@ COMPANY KNOWLEDGE:
 
 USER TOPIC:
 {topic}
-
+{steer_block}
 Generate the best possible LinkedIn post brief for this topic using only facts from the company knowledge above.
 Adapt post type, register, and copy density to the MARKETING PROFILE.
 Remember: caption and graphic are separate artifacts with separate word budgets.
