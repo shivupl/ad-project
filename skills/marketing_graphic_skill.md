@@ -132,3 +132,10 @@ When brand fonts are provided:
 - **No truncation** — output the complete HTML file including all closing tags
 
 Remember: Claude is capable of extraordinary creative work. Don't hold back, show what can truly be created when thinking outside the box and committing fully to a distinctive vision.
+
+## Craft Floors (added — non-negotiable, apply on top of everything above)
+
+- **Scene first**: before choosing the look, write ONE sentence (as an HTML comment after `<!DOCTYPE html>`) naming who sees this, where, and under what light. Commit to a direction from it.
+- **Contrast floor**: body text ≥ 4.5:1 against its background; large/display text ≥ 3:1. Never washed-out muted gray on a colored ground — use a darker shade of the ground's own hue (or the text color at reduced opacity), never a flat light gray that disappears.
+- **Overflow guard**: reason about the rendered width of the actual headline words at the chosen size. If they can't fit one line with margin to spare, choose the line break deliberately. A display word that clips the canvas edge or collides with the copy below is an automatic fail.
+- **Even line breaks**: apply the equivalent of `text-wrap: balance` — hand-break multi-line headlines so the lines are even and no single orphan word dangles on its own line.
