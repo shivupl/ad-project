@@ -38,9 +38,14 @@ drifts over time).
   `brief_to_post_content`, save brief+caption, `_choose_design_skill`,
   `generate_graphic`, save html, return the same dict `run()` returns today.
 
-- **`run(...)`** — unchanged signature and behavior; body becomes:
-  load brand/brain/logo -> `generate_brief(...)` -> `render_from_brief(...)`.
-  CLI and existing callers unaffected.
+- **`run(...)`** — the non-interactive one-shot entry point (CLI / scripts).
+  Its **external contract is preserved** (same params in; same brief/caption/
+  html/png out and the same saved files) so existing callers keep working — but
+  its **body becomes a thin loader + delegator**: load brand/brain/logo -> call
+  `generate_brief(...)` -> call `render_from_brief(...)`. All the inline
+  rendering logic moves out into `render_from_brief`. There is no human in the
+  loop here; the interactive review loop lives entirely in the Streamlit page,
+  which drives the two halves separately.
 
 - **`fit_brief_copy(brief) -> (brief, changes)`** — *new, in `strategy_agent.py`*;
   the "minor repolish". Runs `validate_brief` to find over-limit fields; ONLY
