@@ -83,6 +83,7 @@ if proposal:
         if new:
             st.session_state.proposal = new
             st.session_state.proposal_sig = _sig()
+            st.session_state.pop("result", None)
             st.rerun()
 
     with st.expander("✏️ Tweak the idea"):
@@ -116,6 +117,7 @@ if proposal:
                 fitted, changes = fit_brief_copy(edited)
                 st.session_state.proposal = fitted
                 st.session_state.proposal_sig = _sig()
+                st.session_state.pop("result", None)
                 if changes:
                     st.info("Adjusted to fit:\n" + "\n".join(f"- {ch}" for ch in changes))
                 st.rerun()

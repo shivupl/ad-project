@@ -107,7 +107,8 @@ def fit_brief_copy(brief: dict) -> tuple:
             print(f"fit_brief_copy: trim failed, keeping copy as-is ({e})")
             trimmed = {}
         for f in over:
-            new = (trimmed.get(f) or "").strip()
+            raw = trimmed.get(f)
+            new = raw.strip() if isinstance(raw, str) else ""
             if new and new != graphic.get(f):
                 changes.append(f'{f}: "{graphic[f]}" → "{new}"')
                 graphic[f] = new
