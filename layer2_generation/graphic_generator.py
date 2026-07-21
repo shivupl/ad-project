@@ -15,7 +15,7 @@ from layer2_generation.review import (
     CANVAS_HEIGHT, CANVAS_WIDTH, find_defects, html_to_png, repair_html,
 )
 from layer2_generation.strategy_agent import brief_to_caption, brief_to_post_content, generate_brief, validate_brief
-from paths import BRAND_CANVAS_SKILL, DATA_DIR, FRONTEND_DESIGN_SKILL, MARKETING_GRAPHIC_SKILL, ROOT
+from paths import B2B_GRAPHIC_SKILL, DATA_DIR, DATA_FORWARD_LEGACY_SKILL, EMOTIONAL_ART_SKILL, ROOT
 
 LOGO_PLACEHOLDER = "__LOGO_BASE64__"
 # Allowance on top of the brief's own copy for small labels (company name, url,
@@ -30,15 +30,16 @@ def load_logo_b64(logo_path: str) -> str:
 
 def _choose_design_skill(brand: dict):
     """Route the design skill by marketing profile: the visually-led canvas
-    skill for emotional/minimal/D2C/prosumer brands, and the marketing-graphic
-    skill (the original SKILL2, restored after a multi-brand bake-off on
-    Finbots/Ramp/Stripe) for rational B2B and everything else."""
+    skill for emotional/minimal/D2C/prosumer brands, and the b2b_graphic
+    skill (the restored original SKILL2 + craft floors, "SafeWins") for
+    rational B2B and everything else. A minimal, content-adaptive B2B option
+    lives at B2B_MINIMAL_SKILL but is not routed by default."""
     mp = brand.get("marketing_profile") or {}
     if (mp.get("persuasion_mode") == "emotional"
             or mp.get("content_density") == "minimal"
             or mp.get("business_model") in ("d2c_consumer", "prosumer_creative")):
-        return BRAND_CANVAS_SKILL
-    return MARKETING_GRAPHIC_SKILL
+        return EMOTIONAL_ART_SKILL
+    return B2B_GRAPHIC_SKILL
 
 
 # ─────────────────────────────────────────────
@@ -46,7 +47,7 @@ def _choose_design_skill(brand: dict):
 # ─────────────────────────────────────────────
 
 def _build_system_prompt(correction: str = None, skill_path=None) -> str:
-    skill = (skill_path or FRONTEND_DESIGN_SKILL).read_text()
+    skill = (skill_path or DATA_FORWARD_LEGACY_SKILL).read_text()
     correction_block = f"\n\nFIX THESE SPECIFIC PROBLEMS FROM YOUR LAST ATTEMPT:\n{correction}\n" if correction else ""
 
     return f"""{skill}

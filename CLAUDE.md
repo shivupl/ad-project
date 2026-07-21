@@ -17,12 +17,14 @@ Company website URL + a topic → ready-to-post LinkedIn caption + branded graph
 **Shared core**: `llm.py` — the ONLY place API clients and model IDs live (`MODEL_HEAVY` / `MODEL_LIGHT`). Change a model here, nowhere else. All fence-strip/JSON-parse/retry logic is `llm.complete()` / `llm.complete_json()`.
 
 **Skills** (`skills/*.md`) — the prompt tuning surface, loaded as system prompts:
-- `marketing_graphic_skill.md` — distinctive, production-grade graphics for rational/B2B brands (the restored original `SKILL2`; won a multi-brand Finbots/Ramp/Stripe bake-off over the old data-forward skill).
-- `brand_canvas_skill.md` — art-directed, philosophy-first graphics (emotional/minimal/D2C/prosumer brands).
-- Routing between them is `_choose_design_skill()` in graphic_generator, keyed off the brand's `marketing_profile`.
-- `frontend_design_skill.md` — the previous data-forward B2B skill, now retired from routing (kept only as a defensive fallback in `_build_system_prompt`).
-- `linkedin_strategy_skill.md` — the strategist persona (profile-adaptive, 6 post types)
-- `senior_designer_skill.md` — the review agent persona
+- `b2b_graphic_skill.md` — the active design skill for rational/B2B brands ("SafeWins": the restored original `SKILL2` + craft floors). Routed by default for the B2B lane.
+- `b2b_minimal_skill.md` — a minimal, content-adaptive B2B option (the "Adaptive Design Director": reads the content's shape and picks a fitting composition; more editorial/minimal than the default). Saved as an option; not routed by default.
+- `emotional_art_direction_skill.md` — art-directed, philosophy-first graphics (emotional/minimal/D2C/prosumer brands, e.g. Hims).
+- Routing is `_choose_design_skill()` in graphic_generator, keyed off the brand's `marketing_profile`.
+- `b2b_graphic_legacy_skill.md` — the pre-craft-floors "S1" B2B skill, preserved for rollback; not routed.
+- `data_forward_legacy_skill.md` — the retired original data-forward B2B skill, kept only as a defensive fallback in `_build_system_prompt`.
+- `linkedin_strategy_skill.md` — the strategist persona (profile-adaptive, 6 post types).
+- `senior_designer_skill.md` — the review agent persona (dormant; used only by the retired `review_and_enhance`).
 
 ## Running
 

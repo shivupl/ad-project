@@ -1,6 +1,6 @@
 ---
 name: marketing-graphic-legacy
-description: LEGACY "S1" version of the marketing-graphic skill — the restored original SKILL2 WITHOUT the added craft floors. Preserved for reference/rollback; not routed by default. The active B2B skill is marketing_graphic_skill.md (SafeWins).
+description: LEGACY "S1" version of the marketing-graphic skill — the restored original SKILL2 WITHOUT the added craft floors. Preserved for reference/rollback; not routed by default. The active B2B skill is b2b_graphic_skill.md (SafeWins).
 ---
 
 This skill guides generation of distinctive, production-grade marketing graphics as self-contained HTML/CSS files. Every graphic must feel intentionally designed — not templated, not generic, not interchangeable.
